@@ -1,0 +1,34 @@
+--- car_game_advanced_new.py	2023-06-05 08:00:00
++++ car_game_advanced_fixed.py	2023-06-05 08:00:00
+@@ -2432,7 +2432,7 @@
+         if option == "FULLSCREEN":
+             if self.current_values[option] == 1:  # ON
+                 # Save current window size before going fullscreen
+-                self.windowed_size = (self.screen_width, self.screen_height)
++                self.windowed_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
+                 
+                 # Get the display info for proper fullscreen resolution
+                 info = pygame.display.Info()
+@@ -2807,7 +2807,7 @@
+         if option == "FULLSCREEN":
+             if self.current_values[option] == 1:  # ON
+                 # Save current window size before going fullscreen
+-                self.windowed_size = (self.screen_width, self.screen_height)
++                self.windowed_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
+                 
+                 # Get the display info for proper fullscreen resolution
+                 info = pygame.display.Info()
+@@ -4425,6 +4425,12 @@
+                     # Update game dimensions
+                     screen_width = self.screen.get_width()
+                     screen_height = self.screen.get_height()
++                    
++                    # Update global variables to match new screen dimensions
++                    global SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_X, SCALE_Y, LANE_WIDTH, LANE_POSITIONS
++                    SCREEN_WIDTH = screen_width
++                    SCREEN_HEIGHT = screen_height
++                    SCALE_X = SCREEN_WIDTH / BASE_WIDTH
++                    SCALE_Y = SCREEN_HEIGHT / BASE_HEIGHT
+                     
+                     # Recreate settings menu with new dimensions
+                     settings_menu = SettingsMenu(self.screen, screen_width, screen_height)
