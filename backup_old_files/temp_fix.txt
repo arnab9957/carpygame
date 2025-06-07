@@ -1,0 +1,8 @@
+        if self.game_mode == GAME_MODE_ENDLESS:
+            mode_name = "ENDLESS MODE"
+        elif self.game_mode == GAME_MODE_TIME_ATTACK:
+            mode_name = "TIME ATTACK MODE"
+        elif self.game_mode == GAME_MODE_RACE:
+            mode_name = "RACE MODE"
+        else:
+            mode_name = "MISSIONS MODE"

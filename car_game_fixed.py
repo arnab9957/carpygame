@@ -264,10 +264,10 @@ COIN_COLOR = (255, 223, 0)  # Gold for coins
 SLOW_MO_COLOR = (138, 43, 226)  # Purple for slow motion
 
 # Game settings
-LANE_WIDTH = SCREEN_WIDTH // 8  # Changed from 6 to 8 lanes
+LANE_WIDTH = SCREEN_WIDTH // 6  # Changed from 4 to 6 lanes
 LANE_POSITIONS = [
-    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(8)
-]  # Now 8 lane positions
+    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(6)
+]  # Now 6 lane positions
 CAR_WIDTH = 60
 CAR_HEIGHT = 120
 OBSTACLE_WIDTH = 50
@@ -1039,7 +1039,7 @@ class Car:
         self.width = width
         self.height = height
         self.color = color
-        self.lane = 1  # Starting lane (0-7 for 8 lanes)
+        self.lane = 1  # Starting lane (0-3)
 
         # Power-up states
         self.has_shield = False
@@ -1393,7 +1393,7 @@ class Car:
             self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
 
     def move_right(self):
-        if self.lane < 7:  # Changed from 5 to 7 for 8 lanes
+        if self.lane < 5:  # Changed from 3 to 5 for 6 lanes
             self.lane += 1
             self.x = LANE_POSITIONS[self.lane]
             # Add swerve effect
@@ -2034,7 +2034,7 @@ class AIControlledCar(OtherCar):
             if obstacle_ahead or car_ahead:
                 # Find a safe lane to move to
                 safe_lanes = []
-                for l in range(8):  # Changed from 6 to 8 lanes
+                for l in range(6):  # 6 lanes
                     if l != self.lane:
                         lane_safe = True
                         
@@ -2074,7 +2074,7 @@ class AIControlledCar(OtherCar):
                 self.lane_change_cooldown = random.uniform(2.0, 4.0)
             elif self.ai_type == "normal" and random.random() < 0.02:
                 # Normal cars occasionally change lanes randomly
-                new_lane = random.randint(0, 7)  # Changed from 0-5 to 0-7 for 8 lanes
+                new_lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
                 if new_lane != self.lane:
                     self.target_lane = new_lane
                     self.lane_change_cooldown = random.uniform(2.0, 5.0)
@@ -5056,14 +5056,14 @@ class Game:
                 )
 
         # Draw lane markings with metallic effect
-        for i in range(9):  # Changed from 7 to 9 for 8 lanes
+        for i in range(7):  # Changed from 5 to 7 for 6 lanes
             x = i * LANE_WIDTH
             pygame.draw.line(
                 self.screen, METALLIC_SILVER, (x, 0), (x, SCREEN_HEIGHT), 3
             )
 
         # Draw dashed lines in the middle of lanes with neon effect
-        for i in range(1, 8):  # Changed from 1-6 to 1-8 for 8 lanes
+        for i in range(1, 6):  # Changed from 1-4 to 1-6 for 6 lanes
             x = i * LANE_WIDTH
             for y in range(0, SCREEN_HEIGHT, 40):
                 # Add a subtle glow effect to the lane markers
@@ -6115,7 +6115,21 @@ class Game:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
 
-            # Draw title - without box/glow effect
+            # Draw title with glow effect
+            for offset in range(5, 0, -1):
+                glow_rect = title_rect.copy()
+                glow_rect.inflate_ip(offset * 2, offset * 2)
+                pygame.draw.rect(
+                    self.screen,
+                    (
+                        min(NEON_YELLOW[0], 255),
+                        min(NEON_YELLOW[1] - offset * 10, 255),
+                        min(NEON_YELLOW[2], 255),
+                    ),
+                    glow_rect,
+                    2,
+                    border_radius=10,
+                )
             self.screen.blit(title_text, title_rect)
 
             # Draw game over text if applicable

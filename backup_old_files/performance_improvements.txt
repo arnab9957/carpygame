@@ -1,0 +1,27 @@
+PERFORMANCE IMPROVEMENTS MADE TO CAR RACING GAME
+
+1. REDUCED PARTICLE EFFECTS
+   - Decreased star count from 15 to 5
+   - Limited maximum particles to 25 at any time
+   - Reduced particle spawn chance by over 50%
+
+2. DECREASED GAME OBJECT COUNT
+   - Reduced maximum obstacles from 3 to 2
+   - Reduced maximum other cars from 3 to 2
+   - Reduced maximum coins from 10 to 6
+
+3. OPTIMIZED RENDERING
+   - Added background caching to avoid redrawing the sky gradient every frame
+   - Only recreates the background when the day phase changes significantly
+
+4. IMPROVED FRAME RATE
+   - Reduced target frame rate from 60 FPS to 30 FPS for more consistent performance
+
+5. ADDITIONAL TIPS FOR BETTER PERFORMANCE
+   - Run the game in a smaller window rather than fullscreen
+   - Close other applications while playing
+   - If still experiencing lag, try running the game with:
+     python3 -O car_game_fixed.py
+     (The -O flag enables optimizations)
+
+The optimized game is available at: car_game_fixed.py

@@ -66,7 +66,7 @@ SCALE_X = SCREEN_WIDTH / BASE_WIDTH
 SCALE_Y = SCREEN_HEIGHT / BASE_HEIGHT
 
 # Game constants
-STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
+STAR_COUNT = 8  # Reduced for performance  # Reduced for performance
 
 
 def scale_value(value):
@@ -263,11 +263,23 @@ MAGNET_COLOR = (255, 215, 0)  # Gold for coin magnet
 COIN_COLOR = (255, 223, 0)  # Gold for coins
 SLOW_MO_COLOR = (138, 43, 226)  # Purple for slow motion
 
+
+# Performance optimization settings
+MAX_PARTICLES = 30  # Limit total particles
+MAX_OBSTACLES = 2   # Limit obstacles
+MAX_CARS = 2        # Limit other cars
+MAX_COINS = 8       # Limit coins
+MAX_SPARKLES = 30   # Limit menu sparkles
+PARTICLE_SPAWN_CHANCE = 0.3  # Reduce particle spawn chance
+ENABLE_BACKGROUND_CACHE = True  # Cache background gradients
+ENABLE_HEADLIGHTS = False  # Disable headlight effects for performance
+ENABLE_TIRE_TRACKS = False  # Disable tire track effects
+TARGET_FPS = 30     # Target 30 FPS for better performance
 # Game settings
-LANE_WIDTH = SCREEN_WIDTH // 8  # Changed from 6 to 8 lanes
+LANE_WIDTH = SCREEN_WIDTH // 6  # Changed from 4 to 6 lanes
 LANE_POSITIONS = [
-    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(8)
-]  # Now 8 lane positions
+    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(6)
+]  # Now 6 lane positions
 CAR_WIDTH = 60
 CAR_HEIGHT = 120
 OBSTACLE_WIDTH = 50
@@ -283,7 +295,7 @@ NIGHT_COLOR = (5, 5, 25)  # Dark blue for night sky top
 NIGHT_COLOR_BOTTOM = (20, 20, 40)  # Slightly lighter blue for night sky bottom
 SUNRISE_COLOR = (255, 127, 80)  # Coral for sunrise/sunset top
 SUNRISE_COLOR_BOTTOM = (255, 99, 71)  # Tomato for sunrise/sunset bottom
-STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
+STAR_COUNT = 8  # Reduced for performance  # Reduced for performance
 
 # Power-up settings
 POWERUP_WIDTH = 40
@@ -462,33 +474,36 @@ class Particle:
         self.gravity = gravity
         self.creation_time = time.time()
 
+    
     def update(self, dt: float) -> None:
-        # Scale velocity by delta time for frame-rate independence
-        self.x += self.velocity[0] * dt
-        self.y += self.velocity[1] * dt
+        # If dt is not provided or is zero, calculate it
+        if dt <= 0:
+            current_time = time.time()
+            dt = current_time - self.last_update_time
+            self.last_update_time = current_time
 
-        # Apply gravity
-        if self.gravity > 0:
-            self.velocity = (self.velocity[0], self.velocity[1] + self.gravity * dt)
-
-        # Update lifetime
-        self.lifetime -= dt
-
-        # Update size if shrinking
-        if self.shrink:
-            self.size = self.initial_size * (self.lifetime / self.max_lifetime)
-
-        # Update alpha (fade out)
-        self.alpha = int(255 * (self.lifetime / self.max_lifetime))
-
+        # Cap dt to avoid large jumps
+        dt = min(dt, 0.1)
+        
+        # Batch process particles - remove dead particles first
+        self.particles = [p for p in self.particles if p.lifetime > 0]
+        
+        # Then update remaining particles
+        for particle in self.particles:
+            particle.update(dt)
+    
     def draw(self, screen: pygame.Surface) -> None:
-        if self.lifetime <= 0:
+        if self.lifetime <= 0 or self.size < 1.0:  # Skip very small particles
             return
 
         try:
+            # Skip alpha calculations for better performance
+            if self.alpha < 30:  # Skip nearly invisible particles
+                return
+                
             # Create a surface with per-pixel alpha
             particle_surface = pygame.Surface(
-                (self.size * 2, self.size * 2), pygame.SRCALPHA
+                (int(self.size * 2), int(self.size * 2)), pygame.SRCALPHA
             )
 
             # Make sure alpha is within valid range
@@ -503,16 +518,16 @@ class Particle:
             pygame.draw.circle(
                 particle_surface,
                 (r, g, b, alpha),
-                (self.size, self.size),
-                self.size,
+                (int(self.size), int(self.size)),
+                int(self.size),
             )
 
             # Blit the particle surface onto the screen
-            screen.blit(particle_surface, (self.x - self.size, self.y - self.size))
+            screen.blit(particle_surface, (int(self.x - self.size), int(self.y - self.size)))
         except Exception as e:
             # Silently fail if there's an error drawing a particle
             pass
-
+    
     def is_alive(self) -> bool:
         return self.lifetime > 0
 
@@ -524,13 +539,14 @@ class ParticleSystem:
 
     def add_particle(self, particle: Particle) -> None:
         # Limit total particles for performance
-        if len(self.particles) >= 25:
+        if len(self.particles) >= 30:  # Added particle limit
             return
         # Limit total particles for performance
         if len(self.particles) >= 50:
             return
         self.particles.append(particle)
 
+    
     def update(self, dt: float) -> None:
         # If dt is not provided or is zero, calculate it
         if dt <= 0:
@@ -540,13 +556,14 @@ class ParticleSystem:
 
         # Cap dt to avoid large jumps
         dt = min(dt, 0.1)
-
-        # Update all particles
-        for particle in self.particles[:]:
+        
+        # Batch process particles - remove dead particles first
+        self.particles = [p for p in self.particles if p.lifetime > 0]
+        
+        # Then update remaining particles
+        for particle in self.particles:
             particle.update(dt)
-            if not particle.is_alive():
-                self.particles.remove(particle)
-
+    
     def draw(self, screen: pygame.Surface) -> None:
         for particle in self.particles:
             particle.draw(screen)
@@ -573,7 +590,7 @@ class ParticleSystem:
             )
 
             # Add some red sparks for more dramatic effect
-            if random.random() < 0.3:
+            if random.random() < 0.15:  # Reduced spawn chance
                 color_choice = random.choice(
                     [
                         (255, 0, 0),  # Red
@@ -601,7 +618,7 @@ class ParticleSystem:
             self.add_particle(particle)
 
             # Add a glow effect for some particles
-            if random.random() < 0.3:
+            if random.random() < 0.15:  # Reduced spawn chance
                 glow = Particle(
                     x=particle.x,
                     y=particle.y,
@@ -674,15 +691,15 @@ class ParticleSystem:
     def create_crash(self, x: float, y: float) -> None:
         """Create an enhanced crash effect with multiple particle types"""
         # Create a burst of sparks with high intensity
-        self.create_spark(x, y, count=15, intensity=1.5)  # Reduced for performance
+        self.create_spark(x, y, count=8  # Reduced for performance, intensity=1.5)  # Reduced for performance
 
         # Create smoke with different colors for a more dramatic effect
         self.create_smoke(x, y, count=5)  # Reduced for performance - Regular gray smoke
-        self.create_smoke(x, y, count=10, color_base=(100, 100, 100))  # Dark smoke
+        self.create_smoke(x, y, count=5  # Reduced for performance, color_base=(100, 100, 100))  # Dark smoke
         self.create_smoke(x, y, count=8, color_base=(50, 50, 50))  # Very dark smoke
 
         # Add some fire/explosion particles
-        for _ in range(20):
+        for _ in range(10):  # Reduced particle count
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(80, 250) * scale_value(1.0)
             velocity = (math.cos(angle) * speed, math.sin(angle) * speed)
@@ -728,7 +745,7 @@ class ParticleSystem:
                 self.add_particle(glow)
 
         # Create debris particles with enhanced physics
-        for _ in range(25):
+        for _ in range(12):  # Reduced particle count
             # Random velocity in all directions, but stronger than sparks
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(100, 400) * scale_value(1.0)
@@ -757,7 +774,7 @@ class ParticleSystem:
                 velocity=velocity,
                 lifetime=random.uniform(0.5, 2.0),
                 shrink=random.choice([True, False]),  # Some shrink, some don't
-                gravity=random.uniform(150, 300)
+                gravity=random.uniform(2.0, 5.0)  # Increased interval
                 * scale_value(1.0),  # Debris falls down with variable gravity
             )
             self.add_particle(particle)
@@ -833,7 +850,7 @@ class ParticleSystem:
                 self.add_particle(glow)
 
         # Add some spark particles occasionally for a more dynamic effect
-        if random.random() < 0.3:  # 30% chance
+        if random.random() < 0.15:  # Reduced spawn chance  # 30% chance
             self.create_spark(x, y, count=3, intensity=0.7)
 
     def create_tire_tracks(self, x: float, y: float, is_drifting: bool = False) -> None:
@@ -858,7 +875,7 @@ class ParticleSystem:
                 color=color,
                 size=random.uniform(2, 4) * size_factor,
                 velocity=(0, 0),  # Stationary
-                lifetime=random.uniform(1.0, 3.0),  # Longer lifetime
+                lifetime=random.uniform(2.0, 5.0)  # Increased interval,  # Longer lifetime
                 shrink=False,
                 gravity=0,
             )
@@ -896,7 +913,7 @@ class ParticleSystem:
                 velocity=velocity,
                 lifetime=random.uniform(0.5, 1.2),
                 shrink=True,
-                gravity=random.uniform(100, 300),  # Water falls down
+                gravity=random.uniform(2.0, 5.0)  # Increased interval,  # Water falls down
             )
             self.add_particle(particle)
 
@@ -1039,7 +1056,7 @@ class Car:
         self.width = width
         self.height = height
         self.color = color
-        self.lane = 1  # Starting lane (0-7 for 8 lanes)
+        self.lane = 1  # Starting lane (0-3)
 
         # Power-up states
         self.has_shield = False
@@ -1393,7 +1410,7 @@ class Car:
             self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
 
     def move_right(self):
-        if self.lane < 7:  # Changed from 5 to 7 for 8 lanes
+        if self.lane < 5:  # Changed from 3 to 5 for 6 lanes
             self.lane += 1
             self.x = LANE_POSITIONS[self.lane]
             # Add swerve effect
@@ -2034,7 +2051,7 @@ class AIControlledCar(OtherCar):
             if obstacle_ahead or car_ahead:
                 # Find a safe lane to move to
                 safe_lanes = []
-                for l in range(8):  # Changed from 6 to 8 lanes
+                for l in range(6):  # 6 lanes
                     if l != self.lane:
                         lane_safe = True
                         
@@ -2074,7 +2091,7 @@ class AIControlledCar(OtherCar):
                 self.lane_change_cooldown = random.uniform(2.0, 4.0)
             elif self.ai_type == "normal" and random.random() < 0.02:
                 # Normal cars occasionally change lanes randomly
-                new_lane = random.randint(0, 7)  # Changed from 0-5 to 0-7 for 8 lanes
+                new_lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
                 if new_lane != self.lane:
                     self.target_lane = new_lane
                     self.lane_change_cooldown = random.uniform(2.0, 5.0)
@@ -2377,6 +2394,10 @@ class SettingsMenu:
                     # Play menu navigation sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_navigate.play()
                         except:
                             pass
@@ -2385,6 +2406,10 @@ class SettingsMenu:
                     # Play menu navigation sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_navigate.play()
                         except:
                             pass
@@ -2396,6 +2421,10 @@ class SettingsMenu:
                         # Play menu navigation sound
                         if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                             try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                 sound_menu_navigate.play()
                             except:
                                 pass
@@ -2411,6 +2440,10 @@ class SettingsMenu:
                         # Play menu navigation sound
                         if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                             try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                 sound_menu_navigate.play()
                             except:
                                 pass
@@ -2422,6 +2455,10 @@ class SettingsMenu:
                     # Play menu selection sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_select.play()
                         except:
                             pass
@@ -2447,6 +2484,10 @@ class SettingsMenu:
                             # Play menu navigation sound
                             if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                                 try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                     sound_menu_navigate.play()
                                 except:
                                     pass
@@ -2460,6 +2501,10 @@ class SettingsMenu:
                             # Play menu selection sound
                             if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                                 try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                     sound_menu_select.play()
                                 except:
                                     pass
@@ -2780,6 +2825,10 @@ class PauseMenu:
                     # Play menu navigation sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_navigate.play()
                         except:
                             pass
@@ -2790,6 +2839,10 @@ class PauseMenu:
                     # Play menu navigation sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_navigate.play()
                         except:
                             pass
@@ -2797,6 +2850,10 @@ class PauseMenu:
                     # Play menu selection sound
                     if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                         try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                             sound_menu_select.play()
                         except:
                             pass
@@ -2820,6 +2877,10 @@ class PauseMenu:
                             # Play menu navigation sound
                             if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                                 try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                     sound_menu_navigate.play()
                                 except:
                                     pass
@@ -2841,6 +2902,10 @@ class PauseMenu:
                             # Play menu selection sound
                             if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                                 try:
+
+            # Skip some visual effects when there are many objects for better performance
+            skip_effects = len(self.obstacles) + len(self.other_cars) + len(self.powerups) + len(self.coins) > 10
+        
                                     sound_menu_select.play()
                                 except:
                                     pass
@@ -3867,7 +3932,7 @@ class Game:
             y = random.randint(0, SCREEN_HEIGHT // 2)  # Stars only in top half of sky
             size = random.uniform(0.5, 2)
             brightness = random.uniform(0.5, 1.0)
-            twinkle_speed = random.uniform(1.0, 3.0)
+            twinkle_speed = random.uniform(2.0, 5.0)  # Increased interval
             self.stars.append(
                 {
                     "x": x,
@@ -4308,8 +4373,6 @@ class Game:
         ELECTRIC_PURPLE = (191, 64, 191)
         SLEEK_SILVER = (204, 204, 204)
         BRIGHT_RED = (255, 62, 65)
-        NEON_GREEN = (57, 255, 20)
-        LIGHT_BLUE = (0, 191, 255)
 
         # Get screen dimensions
         SCREEN_WIDTH = self.screen.get_width()
@@ -4330,25 +4393,18 @@ class Game:
 
         title_font = get_font(48, bold=True)
         score_font = get_font(24)
-        tab_font = get_font(28, bold=True)
 
-        # Initialize mode selection
-        current_mode = self.game_mode
-        mode_names = {
-            GAME_MODE_ENDLESS: "ENDLESS MODE",
-            GAME_MODE_TIME_ATTACK: "TIME ATTACK MODE",
-            GAME_MODE_MISSIONS: "MISSIONS MODE",
-            GAME_MODE_RACE: "RACE MODE"
-        }
-        mode_colors = {
-            GAME_MODE_ENDLESS: NEON_YELLOW,
-            GAME_MODE_TIME_ATTACK: ELECTRIC_PURPLE,
-            GAME_MODE_MISSIONS: NEON_GREEN,
-            GAME_MODE_RACE: LIGHT_BLUE
-        }
-        
-        # Get high scores for current mode
-        highscores = self.highscore_manager.get_highscores(current_mode)
+        # Get mode name for display
+        if self.game_mode == GAME_MODE_ENDLESS:
+            mode_name = "ENDLESS MODE"
+        elif self.game_mode == GAME_MODE_TIME_ATTACK:
+            mode_name = "TIME ATTACK MODE"
+        elif self.game_mode == GAME_MODE_RACE:
+            mode_name = "RACE MODE"
+        else:
+            mode_name = "MISSIONS MODE"
+        # Get high scores for current game mode
+        highscores = self.highscore_manager.get_highscores(self.game_mode)
 
         # Create delete buttons for each score
         delete_buttons = []
@@ -4370,16 +4426,6 @@ class Game:
             except Exception as e:
                 print(f"Error playing menu music: {e}")
 
-        # Create tab buttons for different game modes
-        tab_buttons = []
-        tab_width = SCREEN_WIDTH // 4
-        tab_height = 40
-        tab_y = SCREEN_HEIGHT // 6 - 20
-        
-        for i, mode in enumerate([GAME_MODE_ENDLESS, GAME_MODE_TIME_ATTACK, GAME_MODE_MISSIONS, GAME_MODE_RACE]):
-            tab_rect = pygame.Rect(i * tab_width, tab_y, tab_width, tab_height)
-            tab_buttons.append((tab_rect, mode))
-
         done = False
         while not done:
             # Handle events
@@ -4398,33 +4444,11 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         done = True
-                    elif event.key == pygame.K_LEFT:
-                        # Switch to previous mode
-                        current_mode = (current_mode - 1) % 4
-                        highscores = self.highscore_manager.get_highscores(current_mode)
-                        delete_buttons = []  # Reset delete buttons
-                    elif event.key == pygame.K_RIGHT:
-                        # Switch to next mode
-                        current_mode = (current_mode + 1) % 4
-                        highscores = self.highscore_manager.get_highscores(current_mode)
-                        delete_buttons = []  # Reset delete buttons
                     else:
                         done = True
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
                         mouse_pos = pygame.mouse.get_pos()
-                        
-                        # Check if any tab was clicked
-                        for tab_rect, mode in tab_buttons:
-                            if tab_rect.collidepoint(mouse_pos):
-                                if current_mode != mode:
-                                    current_mode = mode
-                                    highscores = self.highscore_manager.get_highscores(current_mode)
-                                    delete_buttons = []  # Reset delete buttons
-                                    # Play menu sound
-                                    if sound_enabled and hasattr(self, "sound_menu_navigate"):
-                                        self.sound_menu_navigate.play()
-                                break
 
                         # Check if any delete button was clicked
                         button_clicked = False
@@ -4436,11 +4460,11 @@ class Game:
                                     self.sound_menu_select.play()
                                 # Delete the score
                                 if self.highscore_manager.delete_score(
-                                    current_mode, i
+                                    self.game_mode, i
                                 ):
                                     # Refresh the high scores list
                                     highscores = self.highscore_manager.get_highscores(
-                                        current_mode
+                                        self.game_mode
                                     )
                                     # Don't exit the screen, just refresh the display
                                 break
@@ -4480,29 +4504,12 @@ class Game:
             # Draw title
             title_text = title_font.render("HIGH SCORES", True, NEON_YELLOW)
             title_rect = title_text.get_rect(
-                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 10)
+                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6)
             )
             self.screen.blit(title_text, title_rect)
-            
-            # Draw tabs for different game modes
-            for i, mode in enumerate([GAME_MODE_ENDLESS, GAME_MODE_TIME_ATTACK, GAME_MODE_MISSIONS, GAME_MODE_RACE]):
-                tab_rect = pygame.Rect(i * tab_width, tab_y, tab_width, tab_height)
-                
-                # Highlight current mode tab
-                if mode == current_mode:
-                    pygame.draw.rect(self.screen, mode_colors[mode], tab_rect)
-                    pygame.draw.rect(self.screen, WHITE, tab_rect, 2)
-                else:
-                    pygame.draw.rect(self.screen, (50, 50, 50, 150), tab_rect)
-                    pygame.draw.rect(self.screen, SLEEK_SILVER, tab_rect, 1)
-                
-                # Draw tab text
-                tab_text = tab_font.render(mode_names[mode].split()[0], True, WHITE)
-                tab_text_rect = tab_text.get_rect(center=tab_rect.center)
-                self.screen.blit(tab_text, tab_text_rect)
 
             # Draw mode name
-            mode_text = score_font.render(mode_names[current_mode], True, mode_colors[current_mode])
+            mode_text = score_font.render(mode_name, True, ELECTRIC_PURPLE)
             mode_rect = mode_text.get_rect(
                 center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6 + 50)
             )
@@ -4971,6 +4978,7 @@ class Game:
         return (r, g, b)
 
     def draw_road(self):
+        # Create gradient background for the road based on time of day
 
         # Use cached background if available for better performance
         if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
@@ -4988,7 +4996,6 @@ class Game:
             # Use the cached background
             background = self.cached_background
     
-        # Create gradient background for the road based on time of day
         # Use cached background if available for better performance
         if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
             # Only recreate the background when the day phase changes significantly
@@ -5018,6 +5025,7 @@ class Game:
 
         self.screen.blit(background, (0, 0))
 
+        
         # Draw stars if it's night time (between 0.5 and 1.0)
         if 0.4 < self.day_phase < 0.9:
             # Calculate star visibility (0 at day, 1 at full night)
@@ -5054,43 +5062,23 @@ class Game:
                 pygame.draw.circle(
                     self.screen, color, (star["x"], star["y"]), star["size"]
                 )
+    
 
-        # Draw lane markings with metallic effect
-        for i in range(9):  # Changed from 7 to 9 for 8 lanes
-            x = i * LANE_WIDTH
-            pygame.draw.line(
-                self.screen, METALLIC_SILVER, (x, 0), (x, SCREEN_HEIGHT), 3
-            )
+        
+        # Draw lane markings with metallic effect - only draw every other frame for performance
+        if pygame.time.get_ticks() % 2 == 0:
+            for i in range(7):  # Changed from 5 to 7 for 6 lanes
+                x = i * LANE_WIDTH
+                pygame.draw.line(
+                    self.screen, METALLIC_SILVER, (x, 0), (x, SCREEN_HEIGHT), 3
+                )
 
-        # Draw dashed lines in the middle of lanes with neon effect
-        for i in range(1, 8):  # Changed from 1-6 to 1-8 for 8 lanes
-            x = i * LANE_WIDTH
-            for y in range(0, SCREEN_HEIGHT, 40):
-                # Add a subtle glow effect to the lane markers
-                for offset in range(2, 0, -1):
-                    pygame.draw.line(
-                        self.screen,
-                        (
-                            min(WHITE[0] - offset * 30, 255),
-                            min(WHITE[1] - offset * 30, 255),
-                            min(WHITE[2], 255),
-                        ),
-                        (x - offset, y),
-                        (x - offset, y + 20),
-                        1,
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        (
-                            min(WHITE[0] - offset * 30, 255),
-                            min(WHITE[1] - offset * 30, 255),
-                            min(WHITE[2], 255),
-                        ),
-                        (x + offset, y),
-                        (x + offset, y + 20),
-                        1,
-                    )
-                pygame.draw.line(self.screen, WHITE, (x, y), (x, y + 20), 2)
+            # Draw dashed lines in the middle of lanes with neon effect - simplified
+            for i in range(1, 6):  # Changed from 1-4 to 1-6 for 6 lanes
+                x = i * LANE_WIDTH
+                for y in range(0, SCREEN_HEIGHT, 80):  # Increased spacing from 40 to 80
+                    pygame.draw.line(self.screen, WHITE, (x, y), (x, y + 20), 2)
+        
 
     def draw(self):
         try:
@@ -5443,7 +5431,7 @@ class Game:
                 # Continue showing the crash animation for 2 seconds (changed from 1.5)
                 if elapsed < 2.0:
                     # Create additional particles for dramatic effect
-                    if random.random() < 0.3:
+                    if random.random() < 0.15:  # Reduced spawn chance
                         self.particle_system.create_crash(
                             self.crash_position[0] + random.uniform(-20, 20),
                             self.crash_position[1] + random.uniform(-20, 20),
@@ -5578,7 +5566,7 @@ class Game:
                     self.score_multiplier = 1
 
             # Generate new obstacles
-            if current_time - self.last_obstacle_time > random.uniform(3.0, 6.0):  # Further increased spawn interval
+            if current_time - self.last_obstacle_time > random.uniform(4.0, 8.0)  # Increased interval:  # Further increased spawn interval
                 # Check if there are too many obstacles already
                 if len(self.obstacles) < 2:  # Reduced max obstacles from 3 to 2
                     # Choose a lane that doesn't already have an obstacle or car nearby
@@ -5637,7 +5625,7 @@ class Game:
                     if available_lanes:
                         lane = random.choice(available_lanes)
                         # Reduced chance of AI-controlled cars which are more CPU intensive
-                        if random.random() < 0.3:  # Reduced from 0.5
+                        if random.random() < 0.15:  # Reduced spawn chance  # Reduced from 0.5
                             self.other_cars.append(AIControlledCar(lane))
                         else:
                             self.other_cars.append(OtherCar(lane))
@@ -5651,9 +5639,9 @@ class Game:
                 self.last_powerup_time = current_time
 
             # Generate new coins
-            if current_time - self.last_coin_time > random.uniform(1.0, 3.0):  # Increased interval
+            if current_time - self.last_coin_time > random.uniform(2.0, 5.0)  # Increased interval:  # Increased interval
                 # Limit the number of coins on screen
-                if len(self.coins) < 6:  # Reduced for performance  # Add a limit to coins
+                if len(self.coins) < 8:  # Reduced max coins  # Add a limit to coins
                     lane = random.randint(0, 5)
                     x = LANE_POSITIONS[lane] + random.randint(
                         -LANE_WIDTH // 4, LANE_WIDTH // 4
@@ -5699,7 +5687,7 @@ class Game:
                         self.combo_timer = 2.0
                         # Create spark effect for shield collision
                         self.particle_system.create_spark(
-                            obstacle.x, obstacle.y, count=15
+                            obstacle.x, obstacle.y, count=8  # Reduced for performance
                         )
                         # Play shield sound
                         if sound_enabled and hasattr(self, "sound_shield"):
@@ -5745,7 +5733,7 @@ class Game:
                         self.combo_count += 2
                         self.combo_timer = 2.0
                         # Create spark effect for shield collision
-                        self.particle_system.create_spark(car.x, car.y, count=20)
+                        self.particle_system.create_spark(car.x, car.y, count=10  # Reduced for performance)
                         # Play shield sound
                         if sound_enabled and hasattr(self, "sound_shield"):
                             self.sound_shield.play()
@@ -5783,7 +5771,7 @@ class Game:
                         self.particle_system.create_spark(
                             self.player_car.x,
                             self.player_car.y + self.player_car.height // 2,
-                            count=15,
+                            count=8  # Reduced for performance,
                         )
                         # Play boost sound
                         if sound_enabled and hasattr(self, "sound_boost"):
@@ -6115,7 +6103,21 @@ class Game:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
 
-            # Draw title - without box/glow effect
+            # Draw title with glow effect
+            for offset in range(5, 0, -1):
+                glow_rect = title_rect.copy()
+                glow_rect.inflate_ip(offset * 2, offset * 2)
+                pygame.draw.rect(
+                    self.screen,
+                    (
+                        min(NEON_YELLOW[0], 255),
+                        min(NEON_YELLOW[1] - offset * 10, 255),
+                        min(NEON_YELLOW[2], 255),
+                    ),
+                    glow_rect,
+                    2,
+                    border_radius=10,
+                )
             self.screen.blit(title_text, title_rect)
 
             # Draw game over text if applicable
@@ -7411,7 +7413,7 @@ if __name__ == "__main__":
             y = random.randint(0, SCREEN_HEIGHT // 2)  # Stars only in top half of sky
             size = random.uniform(0.5, 2)
             brightness = random.uniform(0.5, 1.0)
-            twinkle_speed = random.uniform(1.0, 3.0)
+            twinkle_speed = random.uniform(2.0, 5.0)  # Increased interval
             self.stars.append(
                 {
                     "x": x,
@@ -7467,6 +7469,8 @@ if __name__ == "__main__":
         return (r, g, b)
 
     def draw_headlights(self):
+        # Skip headlight effects for performance
+        return
         """Draw headlight effects for cars during night time"""
         # Player car headlights
         self.draw_car_headlights(self.player_car, is_player=True)
@@ -7628,11 +7632,11 @@ def update(self):
             boost_y = self.player_car.y + self.player_car.height // 2
 
             # Create boost trail more frequently for a more continuous effect
-            if random.random() < 0.3:  # Reduced for performance
+            if random.random() < 0.15:  # Reduced spawn chance  # Reduced spawn chance
                 self.particle_system.create_boost_trail(boost_x, boost_y)
 
             # Add occasional sparks for a more dynamic effect
-            if random.random() < 0.3:
+            if random.random() < 0.15:  # Reduced spawn chance
                 self.particle_system.create_spark(
                     boost_x + random.uniform(-10, 10),
                     boost_y + random.uniform(-5, 5),
@@ -7678,7 +7682,7 @@ def update(self):
                 self.score_multiplier = 1
 
         # Generate new obstacles
-        if current_time - self.last_obstacle_time > random.uniform(3.0, 6.0):  # Further increased spawn interval
+        if current_time - self.last_obstacle_time > random.uniform(4.0, 8.0)  # Increased interval:  # Further increased spawn interval
             # Check if there are too many obstacles already
             if len(self.obstacles) < 2:  # Reduced max obstacles from 3 to 2
                 # Choose a lane that doesn't already have an obstacle or car nearby
@@ -7737,7 +7741,7 @@ def update(self):
                 if available_lanes:
                     lane = random.choice(available_lanes)
                     # Reduced chance of AI-controlled cars which are more CPU intensive
-                    if random.random() < 0.3:  # Reduced from 0.5
+                    if random.random() < 0.15:  # Reduced spawn chance  # Reduced from 0.5
                         self.other_cars.append(AIControlledCar(lane))
                     else:
                         self.other_cars.append(OtherCar(lane))
@@ -7751,9 +7755,9 @@ def update(self):
             self.last_powerup_time = current_time
 
         # Generate new coins
-        if current_time - self.last_coin_time > random.uniform(1.0, 3.0):  # Increased interval
+        if current_time - self.last_coin_time > random.uniform(2.0, 5.0)  # Increased interval:  # Increased interval
             # Limit the number of coins on screen
-            if len(self.coins) < 6:  # Reduced for performance  # Add a limit to coins
+            if len(self.coins) < 8:  # Reduced max coins  # Add a limit to coins
                 lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
                 x = LANE_POSITIONS[lane] + random.randint(-LANE_WIDTH // 4, LANE_WIDTH // 4)
                 self.coins.append(Coin(x, -20))
@@ -7796,7 +7800,7 @@ def update(self):
                     self.combo_count += 2
                     self.combo_timer = 2.0
                     # Create spark effect for shield collision
-                    self.particle_system.create_spark(obstacle.x, obstacle.y, count=15)
+                    self.particle_system.create_spark(obstacle.x, obstacle.y, count=8  # Reduced for performance)
                     # Play shield sound
                     if sound_enabled:
                         sound_shield.play()
@@ -7837,7 +7841,7 @@ def update(self):
                     self.combo_count += 2
                     self.combo_timer = 2.0
                     # Create spark effect for shield collision
-                    self.particle_system.create_spark(car.x, car.y, count=20)
+                    self.particle_system.create_spark(car.x, car.y, count=10  # Reduced for performance)
                     # Play shield sound
                     if sound_enabled:
                         sound_shield.play()
@@ -7871,7 +7875,7 @@ def update(self):
                     self.particle_system.create_spark(
                         self.player_car.x,
                         self.player_car.y + self.player_car.height // 2,
-                        count=15,
+                        count=8  # Reduced for performance,
                     )
                     # Play boost sound
                     if sound_enabled:

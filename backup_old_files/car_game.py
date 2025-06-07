@@ -66,7 +66,7 @@ SCALE_X = SCREEN_WIDTH / BASE_WIDTH
 SCALE_Y = SCREEN_HEIGHT / BASE_HEIGHT
 
 # Game constants
-STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
+STAR_COUNT = 15  # Reduced for performance
 
 
 def scale_value(value):
@@ -264,10 +264,10 @@ COIN_COLOR = (255, 223, 0)  # Gold for coins
 SLOW_MO_COLOR = (138, 43, 226)  # Purple for slow motion
 
 # Game settings
-LANE_WIDTH = SCREEN_WIDTH // 8  # Changed from 6 to 8 lanes
+LANE_WIDTH = SCREEN_WIDTH // 6  # Changed from 4 to 6 lanes
 LANE_POSITIONS = [
-    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(8)
-]  # Now 8 lane positions
+    LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(6)
+]  # Now 6 lane positions
 CAR_WIDTH = 60
 CAR_HEIGHT = 120
 OBSTACLE_WIDTH = 50
@@ -283,7 +283,7 @@ NIGHT_COLOR = (5, 5, 25)  # Dark blue for night sky top
 NIGHT_COLOR_BOTTOM = (20, 20, 40)  # Slightly lighter blue for night sky bottom
 SUNRISE_COLOR = (255, 127, 80)  # Coral for sunrise/sunset top
 SUNRISE_COLOR_BOTTOM = (255, 99, 71)  # Tomato for sunrise/sunset bottom
-STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
+STAR_COUNT = 15  # Reduced for performance
 
 # Power-up settings
 POWERUP_WIDTH = 40
@@ -523,9 +523,6 @@ class ParticleSystem:
         self.last_update_time = time.time()
 
     def add_particle(self, particle: Particle) -> None:
-        # Limit total particles for performance
-        if len(self.particles) >= 25:
-            return
         # Limit total particles for performance
         if len(self.particles) >= 50:
             return
@@ -1039,7 +1036,7 @@ class Car:
         self.width = width
         self.height = height
         self.color = color
-        self.lane = 1  # Starting lane (0-7 for 8 lanes)
+        self.lane = 1  # Starting lane (0-3)
 
         # Power-up states
         self.has_shield = False
@@ -1393,7 +1390,7 @@ class Car:
             self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
 
     def move_right(self):
-        if self.lane < 7:  # Changed from 5 to 7 for 8 lanes
+        if self.lane < 5:  # Changed from 3 to 5 for 6 lanes
             self.lane += 1
             self.x = LANE_POSITIONS[self.lane]
             # Add swerve effect
@@ -2034,7 +2031,7 @@ class AIControlledCar(OtherCar):
             if obstacle_ahead or car_ahead:
                 # Find a safe lane to move to
                 safe_lanes = []
-                for l in range(8):  # Changed from 6 to 8 lanes
+                for l in range(6):  # 6 lanes
                     if l != self.lane:
                         lane_safe = True
                         
@@ -2074,7 +2071,7 @@ class AIControlledCar(OtherCar):
                 self.lane_change_cooldown = random.uniform(2.0, 4.0)
             elif self.ai_type == "normal" and random.random() < 0.02:
                 # Normal cars occasionally change lanes randomly
-                new_lane = random.randint(0, 7)  # Changed from 0-5 to 0-7 for 8 lanes
+                new_lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
                 if new_lane != self.lane:
                     self.target_lane = new_lane
                     self.lane_change_cooldown = random.uniform(2.0, 5.0)
@@ -4308,8 +4305,6 @@ class Game:
         ELECTRIC_PURPLE = (191, 64, 191)
         SLEEK_SILVER = (204, 204, 204)
         BRIGHT_RED = (255, 62, 65)
-        NEON_GREEN = (57, 255, 20)
-        LIGHT_BLUE = (0, 191, 255)
 
         # Get screen dimensions
         SCREEN_WIDTH = self.screen.get_width()
@@ -4330,25 +4325,18 @@ class Game:
 
         title_font = get_font(48, bold=True)
         score_font = get_font(24)
-        tab_font = get_font(28, bold=True)
 
-        # Initialize mode selection
-        current_mode = self.game_mode
-        mode_names = {
-            GAME_MODE_ENDLESS: "ENDLESS MODE",
-            GAME_MODE_TIME_ATTACK: "TIME ATTACK MODE",
-            GAME_MODE_MISSIONS: "MISSIONS MODE",
-            GAME_MODE_RACE: "RACE MODE"
-        }
-        mode_colors = {
-            GAME_MODE_ENDLESS: NEON_YELLOW,
-            GAME_MODE_TIME_ATTACK: ELECTRIC_PURPLE,
-            GAME_MODE_MISSIONS: NEON_GREEN,
-            GAME_MODE_RACE: LIGHT_BLUE
-        }
-        
-        # Get high scores for current mode
-        highscores = self.highscore_manager.get_highscores(current_mode)
+        # Get mode name for display
+        if self.game_mode == GAME_MODE_ENDLESS:
+            mode_name = "ENDLESS MODE"
+        elif self.game_mode == GAME_MODE_TIME_ATTACK:
+            mode_name = "TIME ATTACK MODE"
+        elif self.game_mode == GAME_MODE_RACE:
+            mode_name = "RACE MODE"
+        else:
+            mode_name = "MISSIONS MODE"
+        # Get high scores for current game mode
+        highscores = self.highscore_manager.get_highscores(self.game_mode)
 
         # Create delete buttons for each score
         delete_buttons = []
@@ -4370,16 +4358,6 @@ class Game:
             except Exception as e:
                 print(f"Error playing menu music: {e}")
 
-        # Create tab buttons for different game modes
-        tab_buttons = []
-        tab_width = SCREEN_WIDTH // 4
-        tab_height = 40
-        tab_y = SCREEN_HEIGHT // 6 - 20
-        
-        for i, mode in enumerate([GAME_MODE_ENDLESS, GAME_MODE_TIME_ATTACK, GAME_MODE_MISSIONS, GAME_MODE_RACE]):
-            tab_rect = pygame.Rect(i * tab_width, tab_y, tab_width, tab_height)
-            tab_buttons.append((tab_rect, mode))
-
         done = False
         while not done:
             # Handle events
@@ -4398,33 +4376,11 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         done = True
-                    elif event.key == pygame.K_LEFT:
-                        # Switch to previous mode
-                        current_mode = (current_mode - 1) % 4
-                        highscores = self.highscore_manager.get_highscores(current_mode)
-                        delete_buttons = []  # Reset delete buttons
-                    elif event.key == pygame.K_RIGHT:
-                        # Switch to next mode
-                        current_mode = (current_mode + 1) % 4
-                        highscores = self.highscore_manager.get_highscores(current_mode)
-                        delete_buttons = []  # Reset delete buttons
                     else:
                         done = True
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
                         mouse_pos = pygame.mouse.get_pos()
-                        
-                        # Check if any tab was clicked
-                        for tab_rect, mode in tab_buttons:
-                            if tab_rect.collidepoint(mouse_pos):
-                                if current_mode != mode:
-                                    current_mode = mode
-                                    highscores = self.highscore_manager.get_highscores(current_mode)
-                                    delete_buttons = []  # Reset delete buttons
-                                    # Play menu sound
-                                    if sound_enabled and hasattr(self, "sound_menu_navigate"):
-                                        self.sound_menu_navigate.play()
-                                break
 
                         # Check if any delete button was clicked
                         button_clicked = False
@@ -4436,11 +4392,11 @@ class Game:
                                     self.sound_menu_select.play()
                                 # Delete the score
                                 if self.highscore_manager.delete_score(
-                                    current_mode, i
+                                    self.game_mode, i
                                 ):
                                     # Refresh the high scores list
                                     highscores = self.highscore_manager.get_highscores(
-                                        current_mode
+                                        self.game_mode
                                     )
                                     # Don't exit the screen, just refresh the display
                                 break
@@ -4480,29 +4436,12 @@ class Game:
             # Draw title
             title_text = title_font.render("HIGH SCORES", True, NEON_YELLOW)
             title_rect = title_text.get_rect(
-                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 10)
+                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6)
             )
             self.screen.blit(title_text, title_rect)
-            
-            # Draw tabs for different game modes
-            for i, mode in enumerate([GAME_MODE_ENDLESS, GAME_MODE_TIME_ATTACK, GAME_MODE_MISSIONS, GAME_MODE_RACE]):
-                tab_rect = pygame.Rect(i * tab_width, tab_y, tab_width, tab_height)
-                
-                # Highlight current mode tab
-                if mode == current_mode:
-                    pygame.draw.rect(self.screen, mode_colors[mode], tab_rect)
-                    pygame.draw.rect(self.screen, WHITE, tab_rect, 2)
-                else:
-                    pygame.draw.rect(self.screen, (50, 50, 50, 150), tab_rect)
-                    pygame.draw.rect(self.screen, SLEEK_SILVER, tab_rect, 1)
-                
-                # Draw tab text
-                tab_text = tab_font.render(mode_names[mode].split()[0], True, WHITE)
-                tab_text_rect = tab_text.get_rect(center=tab_rect.center)
-                self.screen.blit(tab_text, tab_text_rect)
 
             # Draw mode name
-            mode_text = score_font.render(mode_names[current_mode], True, mode_colors[current_mode])
+            mode_text = score_font.render(mode_name, True, ELECTRIC_PURPLE)
             mode_rect = mode_text.get_rect(
                 center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6 + 50)
             )
@@ -4971,23 +4910,6 @@ class Game:
         return (r, g, b)
 
     def draw_road(self):
-
-        # Use cached background if available for better performance
-        if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
-            # Only recreate the background when the day phase changes significantly
-            background = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-            for y in range(SCREEN_HEIGHT):
-                # Get color for this y position
-                color = self.get_sky_color(y)
-                pygame.draw.line(background, color, (0, y), (SCREEN_WIDTH, y))
-            
-            # Cache the background and day phase
-            self.cached_background = background
-            self.cached_day_phase = self.day_phase
-        else:
-            # Use the cached background
-            background = self.cached_background
-    
         # Create gradient background for the road based on time of day
         # Use cached background if available for better performance
         if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
@@ -5056,14 +4978,14 @@ class Game:
                 )
 
         # Draw lane markings with metallic effect
-        for i in range(9):  # Changed from 7 to 9 for 8 lanes
+        for i in range(7):  # Changed from 5 to 7 for 6 lanes
             x = i * LANE_WIDTH
             pygame.draw.line(
                 self.screen, METALLIC_SILVER, (x, 0), (x, SCREEN_HEIGHT), 3
             )
 
         # Draw dashed lines in the middle of lanes with neon effect
-        for i in range(1, 8):  # Changed from 1-6 to 1-8 for 8 lanes
+        for i in range(1, 6):  # Changed from 1-4 to 1-6 for 6 lanes
             x = i * LANE_WIDTH
             for y in range(0, SCREEN_HEIGHT, 40):
                 # Add a subtle glow effect to the lane markers
@@ -5653,7 +5575,7 @@ class Game:
             # Generate new coins
             if current_time - self.last_coin_time > random.uniform(1.0, 3.0):  # Increased interval
                 # Limit the number of coins on screen
-                if len(self.coins) < 6:  # Reduced for performance  # Add a limit to coins
+                if len(self.coins) < 10:  # Add a limit to coins
                     lane = random.randint(0, 5)
                     x = LANE_POSITIONS[lane] + random.randint(
                         -LANE_WIDTH // 4, LANE_WIDTH // 4
@@ -6115,7 +6037,21 @@ class Game:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
 
-            # Draw title - without box/glow effect
+            # Draw title with glow effect
+            for offset in range(5, 0, -1):
+                glow_rect = title_rect.copy()
+                glow_rect.inflate_ip(offset * 2, offset * 2)
+                pygame.draw.rect(
+                    self.screen,
+                    (
+                        min(NEON_YELLOW[0], 255),
+                        min(NEON_YELLOW[1] - offset * 10, 255),
+                        min(NEON_YELLOW[2], 255),
+                    ),
+                    glow_rect,
+                    2,
+                    border_radius=10,
+                )
             self.screen.blit(title_text, title_rect)
 
             # Draw game over text if applicable
@@ -7628,7 +7564,7 @@ def update(self):
             boost_y = self.player_car.y + self.player_car.height // 2
 
             # Create boost trail more frequently for a more continuous effect
-            if random.random() < 0.3:  # Reduced for performance
+            if random.random() < 0.7:
                 self.particle_system.create_boost_trail(boost_x, boost_y)
 
             # Add occasional sparks for a more dynamic effect
@@ -7753,7 +7689,7 @@ def update(self):
         # Generate new coins
         if current_time - self.last_coin_time > random.uniform(1.0, 3.0):  # Increased interval
             # Limit the number of coins on screen
-            if len(self.coins) < 6:  # Reduced for performance  # Add a limit to coins
+            if len(self.coins) < 10:  # Add a limit to coins
                 lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
                 x = LANE_POSITIONS[lane] + random.randint(-LANE_WIDTH // 4, LANE_WIDTH // 4)
                 self.coins.append(Coin(x, -20))

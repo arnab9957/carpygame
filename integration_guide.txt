@@ -1,0 +1,101 @@
+INTEGRATION GUIDE: ADDING "COLLECT N OBJECTS" CHALLENGE TO CAR RACING GAME
+
+This guide explains how to integrate the new Time Attack Challenge into your existing car racing game.
+
+1. FILES ADDED:
+   - time_attack_challenge.py: Contains the TimeAttackChallenge class and CollectibleSprite class
+   - collectible_challenge.py: A standalone demo of the challenge (for testing)
+
+2. INTEGRATION STEPS:
+
+   A. Import the TimeAttackChallenge class in your main game file:
+      ```python
+      from time_attack_challenge import TimeAttackChallenge
+      ```
+
+   B. Initialize the challenge in your Game class:
+      ```python
+      def __init__(self):
+          # ... existing initialization ...
+          self.time_attack_challenge = TimeAttackChallenge(self)
+      ```
+
+   C. Add a method to start the challenge:
+      ```python
+      def start_time_attack_challenge(self, difficulty=1):
+          self.time_attack_challenge.start(difficulty)
+          # You might want to set game_mode to a special mode here
+          self.game_mode = GAME_MODE_TIME_ATTACK
+      ```
+
+   D. Update your game's update method:
+      ```python
+      def update(self):
+          # ... existing update code ...
+          
+          # Update challenge if active
+          if hasattr(self, "time_attack_challenge") and (self.time_attack_challenge.active or self.time_attack_challenge.completed):
+              self.time_attack_challenge.update(self.player_car, dt)
+              
+              # Handle challenge completion
+              if self.time_attack_challenge.completed and self.time_attack_challenge.success:
+                  # Award points, unlock features, etc.
+                  self.score += 1000
+      ```
+
+   E. Update your game's draw method:
+      ```python
+      def draw(self):
+          # ... existing drawing code ...
+          
+          # Draw challenge elements
+          if hasattr(self, "time_attack_challenge") and (self.time_attack_challenge.active or self.time_attack_challenge.completed):
+              self.time_attack_challenge.draw(self.screen)
+      ```
+
+   F. Update your event handling:
+      ```python
+      def handle_events(self):
+          # ... existing event handling ...
+          
+          # Handle challenge events
+          if hasattr(self, "time_attack_challenge") and self.time_attack_challenge.completed:
+              if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                  # Challenge is done, return to normal gameplay
+                  if self.time_attack_challenge.success:
+                      # Maybe show a success message or award bonus
+                      pass
+                  self.game_mode = GAME_MODE_ENDLESS  # or whatever is appropriate
+      ```
+
+3. ADDING TO GAME MODE MENU:
+
+   Add an option in your game mode menu to start the Time Attack Challenge:
+   ```python
+   if selected_mode == "TIME ATTACK":
+       self.start_time_attack_challenge(difficulty=1)  # Adjust difficulty as needed
+   ```
+
+4. CUSTOMIZATION OPTIONS:
+
+   The TimeAttackChallenge class has several parameters you can adjust:
+   - challenge_time: Duration of the challenge in seconds
+   - collectibles_required: Number of points needed to complete the challenge
+   - difficulty_level: Affects spawn rate and requirements (1=easy, 2=medium, 3=hard)
+
+   You can also customize the collectible types in the COLLECTIBLE_TYPES dictionary.
+
+5. TESTING:
+
+   You can test the challenge standalone by running:
+   ```
+   python collectible_challenge.py
+   ```
+
+   This will run a simple version of the challenge without needing the full game.
+
+6. TROUBLESHOOTING:
+
+   - If collectibles don't appear, check that the lane positions are correctly passed to the TimeAttackChallenge
+   - If collisions aren't working, ensure your player car has a proper rect attribute
+   - For performance issues, reduce the number of collectibles or simplify their animations
