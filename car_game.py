@@ -264,7 +264,7 @@ COIN_COLOR = (255, 223, 0)  # Gold for coins
 SLOW_MO_COLOR = (138, 43, 226)  # Purple for slow motion
 
 # Game settings
-LANE_WIDTH = SCREEN_WIDTH // 8  # Changed from 6 to 8 lanes
+LANE_WIDTH = SCREEN_WIDTH // 8  # Changed to 8 lanes
 LANE_POSITIONS = [
     LANE_WIDTH * i + LANE_WIDTH // 2 for i in range(8)
 ]  # Now 8 lane positions
@@ -273,7 +273,7 @@ CAR_HEIGHT = 120
 OBSTACLE_WIDTH = 50
 OBSTACLE_HEIGHT = 50
 INITIAL_SPEED = 5
-SPEED_INCREMENT = 0.005
+SPEED_INCREMENT = 0.005  # Smoother acceleration
 
 # Day-Night cycle settings
 DAY_NIGHT_CYCLE_DURATION = 60  # seconds for a full cycle
@@ -523,15 +523,22 @@ class ParticleSystem:
         self.last_update_time = time.time()
 
     def add_particle(self, particle: Particle) -> None:
+        """Add a particle with a limit for performance"""
         # Limit total particles for performance
-        if len(self.particles) >= 25:
-            return
-        # Limit total particles for performance
-        if len(self.particles) >= 50:
-            return
-        self.particles.append(particle)
+        if len(self.particles) >= 100:  # Increased limit for better visual effects
+            # Replace oldest particle instead of just dropping new ones
+            oldest_index = 0
+            oldest_time = float('inf')
+            for i, p in enumerate(self.particles):
+                if p.creation_time < oldest_time:
+                    oldest_time = p.creation_time
+                    oldest_index = i
+            self.particles[oldest_index] = particle
+        else:
+            self.particles.append(particle)
 
     def update(self, dt: float) -> None:
+        """Update all particles with improved performance"""
         # If dt is not provided or is zero, calculate it
         if dt <= 0:
             current_time = time.time()
@@ -541,15 +548,50 @@ class ParticleSystem:
         # Cap dt to avoid large jumps
         dt = min(dt, 0.1)
 
-        # Update all particles
-        for particle in self.particles[:]:
+        # Use a more efficient approach to update and filter particles
+        active_particles = []
+        for particle in self.particles:
             particle.update(dt)
-            if not particle.is_alive():
-                self.particles.remove(particle)
+            if particle.is_alive():
+                active_particles.append(particle)
+                
+        # Replace the list with only active particles
+        self.particles = active_particles
 
     def draw(self, screen: pygame.Surface) -> None:
+        """Draw all particles with improved performance"""
+        # Use a more efficient approach by avoiding try-except in the main loop
         for particle in self.particles:
-            particle.draw(screen)
+            if particle.lifetime <= 0:
+                continue
+
+            try:
+                # Create a surface with per-pixel alpha
+                particle_surface = pygame.Surface(
+                    (particle.size * 2, particle.size * 2), pygame.SRCALPHA
+                )
+
+                # Make sure alpha is within valid range
+                alpha = max(0, min(255, particle.alpha))
+
+                # Make sure color values are valid
+                r = max(0, min(255, particle.color[0]))
+                g = max(0, min(255, particle.color[1]))
+                b = max(0, min(255, particle.color[2]))
+
+                # Draw the particle with alpha
+                pygame.draw.circle(
+                    particle_surface,
+                    (r, g, b, alpha),
+                    (particle.size, particle.size),
+                    particle.size,
+                )
+
+                # Blit the particle surface onto the screen
+                screen.blit(particle_surface, (particle.x - particle.size, particle.y - particle.size))
+            except:
+                # Silently fail if there's an error drawing a particle
+                pass
 
     def create_spark(
         self, x: float, y: float, count: int = 10, intensity: float = 1.0
@@ -931,6 +973,7 @@ class PowerUp:
         self.collected = False
 
     def draw(self, screen):
+        """Draw the power-up with enhanced animations"""
         # Skip drawing if collected
         if self.collected:
             return
@@ -938,6 +981,13 @@ class PowerUp:
         # Pulsating effect
         self.pulse_effect = (self.pulse_effect + 0.1) % (2 * math.pi)
         pulse_size = math.sin(self.pulse_effect) * 5
+        
+        # Rotation effect
+        rotation_angle = (pygame.time.get_ticks() * 0.05) % 360
+        
+        # Floating up and down animation
+        float_offset = math.sin(pygame.time.get_ticks() * 0.003) * 3
+        draw_y = self.y + float_offset
 
         # Draw power-up with glow effect
         for offset in range(3, 0, -1):
@@ -959,18 +1009,99 @@ class PowerUp:
                 glow_surface,
                 (
                     self.x - glow_surface.get_width() // 2,
-                    self.y - glow_surface.get_height() // 2,
+                    draw_y - glow_surface.get_height() // 2,
                 ),
             )
 
         # Draw main power-up
-        pygame.draw.circle(screen, self.color, (self.x, self.y), self.width // 2)
+        pygame.draw.circle(screen, self.color, (self.x, draw_y), self.width // 2)
+        
+        # Draw inner highlight for 3D effect
+        highlight_color = (
+            min(self.color[0] + 50, 255),
+            min(self.color[1] + 50, 255),
+            min(self.color[2] + 50, 255),
+        )
+        pygame.draw.circle(
+            screen, 
+            highlight_color, 
+            (self.x - self.width // 8, draw_y - self.height // 8), 
+            self.width // 4
+        )
 
-        # Draw symbol
+        # Draw symbol with rotation
         font = get_font(20, bold=True)
         symbol_text = font.render(self.symbol, True, WHITE)
-        symbol_rect = symbol_text.get_rect(center=(self.x, self.y))
-        screen.blit(symbol_text, symbol_rect)
+        
+        # Create a rotated version of the symbol
+        if self.type != "coin":  # Don't rotate coin symbol
+            rotated_symbol = pygame.transform.rotate(symbol_text, rotation_angle)
+            symbol_rect = rotated_symbol.get_rect(center=(self.x, draw_y))
+            screen.blit(rotated_symbol, symbol_rect)
+        else:
+            symbol_rect = symbol_text.get_rect(center=(self.x, draw_y))
+            screen.blit(symbol_text, symbol_rect)
+            
+        # Add special effects based on power-up type
+        if self.type == "boost":
+            # Add speed lines
+            for i in range(3):
+                angle = rotation_angle + i * 120
+                rad_angle = math.radians(angle)
+                line_length = self.width // 2 + 5 + pulse_size // 2
+                end_x = self.x + math.cos(rad_angle) * line_length
+                end_y = draw_y + math.sin(rad_angle) * line_length
+                pygame.draw.line(
+                    screen,
+                    BOOST_COLOR,
+                    (self.x, draw_y),
+                    (end_x, end_y),
+                    2
+                )
+        elif self.type == "shield":
+            # Add shield ring
+            shield_radius = self.width // 2 + 5 + pulse_size // 2
+            pygame.draw.circle(
+                screen,
+                SHIELD_COLOR,
+                (self.x, draw_y),
+                shield_radius,
+                2
+            )
+        elif self.type == "magnet":
+            # Add magnetic field lines
+            for i in range(4):
+                angle = rotation_angle + i * 90
+                rad_angle = math.radians(angle)
+                line_start = self.width // 2 - 5
+                line_end = self.width // 2 + 10 + pulse_size // 2
+                
+                start_x = self.x + math.cos(rad_angle) * line_start
+                start_y = draw_y + math.sin(rad_angle) * line_start
+                end_x = self.x + math.cos(rad_angle) * line_end
+                end_y = draw_y + math.sin(rad_angle) * line_end
+                
+                pygame.draw.line(
+                    screen,
+                    MAGNET_COLOR,
+                    (start_x, start_y),
+                    (end_x, end_y),
+                    2
+                )
+        elif self.type == "slow_mo":
+            # Add clock hand animation
+            hand_length = self.width // 2 - 5
+            hand_angle = math.radians(rotation_angle * 2)  # Rotate twice as fast
+            hand_x = self.x + math.cos(hand_angle) * hand_length
+            hand_y = draw_y + math.sin(hand_angle) * hand_length
+            
+            pygame.draw.line(
+                screen,
+                SLOW_MO_COLOR,
+                (self.x, draw_y),
+                (hand_x, hand_y),
+                2
+            )
 
     def move(self, speed):
         self.y += speed
@@ -1001,18 +1132,54 @@ class Coin:
         self.pulse_effect = random.random() * 2 * math.pi
 
     def draw(self, screen):
+        """Draw the coin with enhanced animations"""
         if self.collected:
             return
 
         # Pulsating effect
         self.pulse_effect = (self.pulse_effect + 0.1) % (2 * math.pi)
         pulse_size = math.sin(self.pulse_effect) * 2
-
-        # Draw coin with glow
+        
+        # Spinning animation
+        spin_angle = (pygame.time.get_ticks() * 0.1) % 360
+        spin_scale = abs(math.sin(math.radians(spin_angle))) * 0.3 + 0.7  # 0.7 to 1.0 scale
+        
+        # Draw coin with glow and 3D effect
+        # Outer glow
+        for offset in range(3, 0, -1):
+            glow_radius = (self.width // 2 + pulse_size + offset * 2) * spin_scale
+            glow_alpha = 100 - offset * 30
+            glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(
+                glow_surface,
+                (*self.color, glow_alpha),
+                (glow_radius, glow_radius),
+                glow_radius
+            )
+            screen.blit(
+                glow_surface,
+                (self.x - glow_radius, self.y - glow_radius)
+            )
+        
+        # Main coin body
+        coin_radius = (self.width // 2 + pulse_size) * spin_scale
         pygame.draw.circle(
-            screen, self.color, (self.x, self.y), self.width // 2 + pulse_size
+            screen, self.color, (self.x, self.y), coin_radius
         )
-        pygame.draw.circle(screen, (255, 255, 200), (self.x, self.y), self.width // 3)
+        
+        # Inner highlight
+        inner_radius = coin_radius * 0.7
+        pygame.draw.circle(
+            screen, (255, 255, 200), (self.x, self.y), inner_radius
+        )
+        
+        # Dollar sign or coin detail that rotates with the coin
+        if spin_angle < 90 or spin_angle > 270:  # Only show when coin is "facing forward"
+            font_size = int(coin_radius * 1.2)
+            font = get_font(font_size, bold=True)
+            dollar_text = font.render("$", True, (255, 223, 0))
+            text_rect = dollar_text.get_rect(center=(self.x, self.y))
+            screen.blit(dollar_text, text_rect)
 
     def move(self, speed):
         self.y += speed
@@ -1068,13 +1235,17 @@ class Car:
         # Calculate actual x position with swerve offset
         actual_x = self.x + self.swerve_offset
 
+        # Add bounce animation effect when driving
+        bounce_offset = math.sin(pygame.time.get_ticks() * 0.01) * 2
+        draw_y = self.y + bounce_offset
+
         # Car body
         pygame.draw.rect(
             screen,
             self.color,
             [
                 actual_x - self.width // 2,
-                self.y - self.height // 2,
+                draw_y - self.height // 2,
                 self.width,
                 self.height,
             ],
@@ -1093,7 +1264,7 @@ class Car:
             highlight_color,
             [
                 actual_x - self.width // 2,
-                self.y - self.height // 2,
+                draw_y - self.height // 2,
                 self.width // 2,
                 self.height,
             ],
@@ -1105,7 +1276,7 @@ class Car:
         windshield_width = int(self.width * 0.8)
         windshield_height = int(self.height * 0.3)
         windshield_x = actual_x - windshield_width // 2
-        windshield_y = self.y - self.height // 2 + int(self.height * 0.15)
+        windshield_y = draw_y - self.height // 2 + int(self.height * 0.15)
         pygame.draw.rect(
             screen,
             (100, 200, 255),
@@ -1118,7 +1289,7 @@ class Car:
         roof_width = int(self.width * 0.8)
         roof_height = int(self.height * 0.2)
         roof_x = actual_x - roof_width // 2
-        roof_y = self.y - self.height // 2 + int(self.height * 0.15) + windshield_height
+        roof_y = draw_y - self.height // 2 + int(self.height * 0.15) + windshield_height
         pygame.draw.rect(
             screen, self.color, [roof_x, roof_y, roof_width, roof_height], 0, 5
         )
@@ -1136,73 +1307,59 @@ class Car:
             5,
         )
 
-        # Wheels
+        # Wheels with rotation animation
         wheel_width = int(self.width * 0.25)
         wheel_height = int(self.height * 0.15)
+        wheel_rotation = (pygame.time.get_ticks() * 0.2) % 360  # Rotation angle based on time
 
         # Front left wheel
-        pygame.draw.rect(
-            screen,
-            MATTE_BLACK,
-            [
-                actual_x - self.width // 2 - 3,
-                self.y - self.height // 4,
-                wheel_width,
-                wheel_height,
-            ],
-            0,
-            3,
+        self.draw_wheel(
+            screen, 
+            actual_x - self.width // 2 - 3,
+            draw_y - self.height // 4,
+            wheel_width,
+            wheel_height,
+            wheel_rotation
         )
 
         # Front right wheel
-        pygame.draw.rect(
+        self.draw_wheel(
             screen,
-            MATTE_BLACK,
-            [
-                actual_x + self.width // 2 - wheel_width + 3,
-                self.y - self.height // 4,
-                wheel_width,
-                wheel_height,
-            ],
-            0,
-            3,
+            actual_x + self.width // 2 - wheel_width + 3,
+            draw_y - self.height // 4,
+            wheel_width,
+            wheel_height,
+            wheel_rotation
         )
 
         # Rear left wheel
-        pygame.draw.rect(
+        self.draw_wheel(
             screen,
-            MATTE_BLACK,
-            [
-                actual_x - self.width // 2 - 3,
-                self.y + self.height // 4 - wheel_height,
-                wheel_width,
-                wheel_height,
-            ],
-            0,
-            3,
+            actual_x - self.width // 2 - 3,
+            draw_y + self.height // 4 - wheel_height,
+            wheel_width,
+            wheel_height,
+            wheel_rotation
         )
 
         # Rear right wheel
-        pygame.draw.rect(
+        self.draw_wheel(
             screen,
-            MATTE_BLACK,
-            [
-                actual_x + self.width // 2 - wheel_width + 3,
-                self.y + self.height // 4 - wheel_height,
-                wheel_width,
-                wheel_height,
-            ],
-            0,
-            3,
+            actual_x + self.width // 2 - wheel_width + 3,
+            draw_y + self.height // 4 - wheel_height,
+            wheel_width,
+            wheel_height,
+            wheel_rotation
         )
 
         # Headlights with glow effect
         headlight_width = int(self.width * 0.15)
         headlight_height = int(self.height * 0.08)
 
-        # Left headlight glow
+        # Left headlight glow - pulsating effect
+        glow_intensity = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5 + 0.5  # 0.5 to 1.5
         for offset in range(3, 0, -1):
-            glow_color = (255, 255, 100, 100 - offset * 30)
+            glow_color = (255, 255, 100, int((100 - offset * 30) * glow_intensity))
             glow_surface = pygame.Surface(
                 (headlight_width + offset * 4, headlight_height + offset * 4),
                 pygame.SRCALPHA,
@@ -1218,7 +1375,7 @@ class Car:
                 glow_surface,
                 (
                     actual_x - self.width // 2 + 5 - offset * 2,
-                    self.y - self.height // 2 + 5 - offset * 2,
+                    draw_y - self.height // 2 + 5 - offset * 2,
                 ),
             )
 
@@ -1228,7 +1385,7 @@ class Car:
             NEON_YELLOW,
             [
                 actual_x - self.width // 2 + 5,
-                self.y - self.height // 2 + 5,
+                draw_y - self.height // 2 + 5,
                 headlight_width,
                 headlight_height,
             ],
@@ -1238,7 +1395,7 @@ class Car:
 
         # Right headlight glow
         for offset in range(3, 0, -1):
-            glow_color = (255, 255, 100, 100 - offset * 30)
+            glow_color = (255, 255, 100, int((100 - offset * 30) * glow_intensity))
             glow_surface = pygame.Surface(
                 (headlight_width + offset * 4, headlight_height + offset * 4),
                 pygame.SRCALPHA,
@@ -1254,7 +1411,7 @@ class Car:
                 glow_surface,
                 (
                     actual_x + self.width // 2 - headlight_width - 5 - offset * 2,
-                    self.y - self.height // 2 + 5 - offset * 2,
+                    draw_y - self.height // 2 + 5 - offset * 2,
                 ),
             )
 
@@ -1264,7 +1421,7 @@ class Car:
             NEON_YELLOW,
             [
                 actual_x + self.width // 2 - headlight_width - 5,
-                self.y - self.height // 2 + 5,
+                draw_y - self.height // 2 + 5,
                 headlight_width,
                 headlight_height,
             ],
@@ -1272,17 +1429,30 @@ class Car:
             3,
         )
 
-        # Taillights
+        # Taillights with brake light animation
         taillight_width = int(self.width * 0.15)
         taillight_height = int(self.height * 0.08)
+        
+        # Brake light effect - brighter when slowing down
+        brake_intensity = 1.0
+        if hasattr(self, 'prev_speed') and hasattr(self, 'speed'):
+            if self.speed < self.prev_speed:
+                brake_intensity = 1.5  # Brighter when braking
+        
+        # Taillight color with brake intensity
+        taillight_color = (
+            min(int(BRIGHT_RED[0] * brake_intensity), 255),
+            min(int(BRIGHT_RED[1] * brake_intensity), 255),
+            min(int(BRIGHT_RED[2] * brake_intensity), 255)
+        )
 
         # Left taillight
         pygame.draw.rect(
             screen,
-            BRIGHT_RED,
+            taillight_color,
             [
                 actual_x - self.width // 2 + 5,
-                self.y + self.height // 2 - taillight_height - 5,
+                draw_y + self.height // 2 - taillight_height - 5,
                 taillight_width,
                 taillight_height,
             ],
@@ -1293,10 +1463,10 @@ class Car:
         # Right taillight
         pygame.draw.rect(
             screen,
-            BRIGHT_RED,
+            taillight_color,
             [
                 actual_x + self.width // 2 - taillight_width - 5,
-                self.y + self.height // 2 - taillight_height - 5,
+                draw_y + self.height // 2 - taillight_height - 5,
                 taillight_width,
                 taillight_height,
             ],
@@ -1310,7 +1480,7 @@ class Car:
                 particle_x = random.randint(
                     int(actual_x - self.width // 3), int(actual_x + self.width // 3)
                 )
-                particle_y = self.y + self.height // 2 + random.randint(5, 15)
+                particle_y = draw_y + self.height // 2 + random.randint(5, 15)
                 particle_size = random.randint(3, 8)
                 particle_color = random.choice(
                     [BOOST_COLOR, (255, 69, 0), (255, 215, 0)]
@@ -1337,16 +1507,35 @@ class Car:
                 (shield_radius, shield_radius),
                 shield_radius,
             )
-            pygame.draw.circle(
-                shield_surface,
-                (*SHIELD_COLOR, shield_alpha // 2),
-                (shield_radius, shield_radius),
-                shield_radius - 5,
-                3,
-            )
+            
+            # Add rotating shield effect
+            rotation_angle = (pygame.time.get_ticks() * 0.05) % 360
+            num_segments = 8
+            for i in range(num_segments):
+                segment_angle = rotation_angle + (i * (360 / num_segments))
+                start_angle = math.radians(segment_angle)
+                end_angle = math.radians(segment_angle + 20)
+                
+                # Calculate arc points
+                arc_points = []
+                for angle in range(int(math.degrees(start_angle)), int(math.degrees(end_angle)) + 1, 5):
+                    rad = math.radians(angle)
+                    x = shield_radius + math.cos(rad) * (shield_radius - 5)
+                    y = shield_radius + math.sin(rad) * (shield_radius - 5)
+                    arc_points.append((x, y))
+                
+                # Draw arc segment if we have enough points
+                if len(arc_points) >= 2:
+                    pygame.draw.lines(
+                        shield_surface,
+                        (*SHIELD_COLOR, 200),
+                        False,
+                        arc_points,
+                        3
+                    )
 
             screen.blit(
-                shield_surface, (actual_x - shield_radius, self.y - shield_radius)
+                shield_surface, (actual_x - shield_radius, draw_y - shield_radius)
             )
 
         # Draw magnet effect if active
@@ -1367,36 +1556,102 @@ class Car:
                 (magnet_radius, magnet_radius),
                 magnet_radius,
             )
-            pygame.draw.circle(
-                magnet_surface,
-                (*MAGNET_COLOR, magnet_alpha // 2),
-                (magnet_radius, magnet_radius),
-                magnet_radius - 10,
-                5,
-            )
+            
+            # Add animated magnetic field lines
+            rotation_angle = (pygame.time.get_ticks() * 0.03) % 360
+            for i in range(8):  # 8 field lines
+                angle = rotation_angle + (i * 45)
+                rad_angle = math.radians(angle)
+                
+                # Inner point
+                inner_x = magnet_radius + math.cos(rad_angle) * (magnet_radius * 0.3)
+                inner_y = magnet_radius + math.sin(rad_angle) * (magnet_radius * 0.3)
+                
+                # Outer point
+                outer_x = magnet_radius + math.cos(rad_angle) * (magnet_radius - 5)
+                outer_y = magnet_radius + math.sin(rad_angle) * (magnet_radius - 5)
+                
+                # Draw magnetic field line
+                pygame.draw.line(
+                    magnet_surface,
+                    (*MAGNET_COLOR, 100),
+                    (inner_x, inner_y),
+                    (outer_x, outer_y),
+                    3
+                )
 
             screen.blit(
-                magnet_surface, (actual_x - magnet_radius, self.y - magnet_radius)
+                magnet_surface, (actual_x - magnet_radius, draw_y - magnet_radius)
             )
 
         # Draw boost energy meter
         self.draw_boost_meter(screen)
+        
+        # Store current speed for brake light animation
+        self.prev_speed = getattr(self, 'speed', 5)
+        
+    def draw_wheel(self, screen, x, y, width, height, rotation_angle):
+        """Draw a wheel with rotation animation"""
+        # Draw the wheel base
+        pygame.draw.rect(
+            screen,
+            MATTE_BLACK,
+            [x, y, width, height],
+            0,
+            3,
+        )
+        
+        # Draw wheel rim
+        rim_width = width - 6
+        rim_height = height - 6
+        rim_x = x + 3
+        rim_y = y + 3
+        
+        pygame.draw.rect(
+            screen,
+            SLEEK_SILVER,
+            [rim_x, rim_y, rim_width, rim_height],
+            0,
+            2,
+        )
+        
+        # Draw spokes to show rotation
+        center_x = x + width // 2
+        center_y = y + height // 2
+        spoke_length = min(rim_width, rim_height) // 2 - 2
+        
+        for i in range(4):  # 4 spokes
+            angle = math.radians(rotation_angle + i * 90)
+            end_x = center_x + math.cos(angle) * spoke_length
+            end_y = center_y + math.sin(angle) * spoke_length
+            
+            pygame.draw.line(
+                screen,
+                MATTE_BLACK,
+                (center_x, center_y),
+                (end_x, end_y),
+                2
+            )
 
     def move_left(self):
         if self.lane > 0:
             self.lane -= 1
             self.x = LANE_POSITIONS[self.lane]
-            # Add swerve effect
-            self.swerve_offset = self.width // 2
+            # Add swerve effect - negative offset for left movement
+            self.swerve_offset = -self.width // 2
             self.swerve_direction = -1
             # Add tire smoke effect
             self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
 
     def move_right(self):
-        if self.lane < 7:  # Changed from 5 to 7 for 8 lanes
+        if self.lane < 7:  # Using 7 as the maximum lane index (for 8 lanes total)
             self.lane += 1
             self.x = LANE_POSITIONS[self.lane]
-            # Add swerve effect
+            # Add swerve effect - positive offset for right movement
+            self.swerve_offset = self.width // 2
+            self.swerve_direction = 1
+            # Add tire smoke effect
+            self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
             self.swerve_offset = -self.width // 2
             self.swerve_direction = 1
             # Add tire smoke effect
@@ -1405,10 +1660,12 @@ class Car:
     def update(self, dt):
         # Update swerve animation
         if self.swerve_offset != 0:
+            # Make swerve speed proportional to dt for consistent animation
+            swerve_speed = 200 * dt  # pixels per second
             if self.swerve_direction < 0:
-                self.swerve_offset = max(0, self.swerve_offset - 5)
+                self.swerve_offset = max(0, self.swerve_offset - swerve_speed)
             else:
-                self.swerve_offset = min(0, self.swerve_offset + 5)
+                self.swerve_offset = min(0, self.swerve_offset + swerve_speed)
 
         # Update power-up timers
         if self.has_shield:
@@ -2123,6 +2380,15 @@ class SettingsMenu:
         self.animation_start_time = pygame.time.get_ticks()
         self.animation_duration = 500  # milliseconds
         
+        # Toggle animation variables
+        self.toggle_animation = False
+        self.toggle_start_time = 0
+        self.toggle_duration = 0.3  # seconds
+        self.toggle_option = None
+        self.toggle_old_value = None
+        self.toggle_new_value = None
+        self.toggle_rect = None
+        
         # Store original window size for returning from fullscreen
         self.windowed_size = (screen_width, screen_height)
     
@@ -2156,6 +2422,25 @@ class SettingsMenu:
         # Draw to the main screen
         self.draw_to_surface(self.screen)
         pygame.display.flip()
+    
+    def draw_pulsating_highlight(self, rect, color, thickness=2):
+        """Draw a pulsating highlight around the given rectangle"""
+        pulse = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5  # 0.0 to 1.0
+        
+        # Calculate pulsating size and alpha
+        expand = int(pulse * 6)
+        alpha = int(128 + pulse * 127)  # 128-255
+        
+        # Create a surface for the highlight
+        highlight_rect = rect.inflate(expand, expand)
+        highlight_surface = pygame.Surface((highlight_rect.width, highlight_rect.height), pygame.SRCALPHA)
+        
+        # Draw the highlight with alpha
+        highlight_color = (*color, alpha)
+        pygame.draw.rect(highlight_surface, highlight_color, (0, 0, highlight_rect.width, highlight_rect.height), thickness, border_radius=5)
+        
+        # Draw the highlight
+        self.screen.blit(highlight_surface, highlight_rect.topleft)
     
     def draw_to_surface(self, surface):
         # Draw background
@@ -2365,6 +2650,116 @@ class SettingsMenu:
             # Draw normal controls
             surface.blit(controls_text, controls_rect)
     
+    def animate_option_toggle(self, option, old_value, new_value):
+        """Animate transitioning between option values"""
+        # Animation parameters
+        duration = 0.3  # seconds
+        start_time = time.time()
+        
+        # Calculate the position of the value text
+        option_index = list(self.settings.keys()).index(option)
+        y_offset = self.screen_height * 0.35 + option_index * 60
+        value_rect = pygame.Rect(
+            self.screen_width // 2 + 20,
+            y_offset - 15,
+            100,
+            30
+        )
+        
+        # Create surfaces for old and new values
+        old_surface = self.font_medium.render(old_value, True, WHITE)
+        new_surface = self.font_medium.render(new_value, True, WHITE)
+        
+        # Store original screen content
+        original_bg = self.screen.copy()
+        
+        # Animation loop
+        clock = pygame.time.Clock()
+        while True:
+            current_time = time.time()
+            progress = min(1.0, (current_time - start_time) / duration)
+            
+            # Restore background
+            self.screen.blit(original_bg, (0, 0))
+            
+            if progress < 0.5:
+                # First half: fade out old value and slide up
+                alpha = int(255 * (1 - progress * 2))
+                offset_y = int(-20 * progress * 2)
+                
+                # Create a temporary surface with alpha
+                temp_surface = pygame.Surface(old_surface.get_size(), pygame.SRCALPHA)
+                temp_surface.fill((0, 0, 0, 0))
+                temp_surface.blit(old_surface, (0, 0))
+                temp_surface.set_alpha(alpha)
+                
+                # Draw with offset
+                self.screen.blit(temp_surface, (value_rect.x, value_rect.y + offset_y))
+            else:
+                # Second half: fade in new value and slide down
+                alpha = int(255 * ((progress - 0.5) * 2))
+                offset_y = int(20 * (1 - (progress - 0.5) * 2))
+                
+                # Create a temporary surface with alpha
+                temp_surface = pygame.Surface(new_surface.get_size(), pygame.SRCALPHA)
+                temp_surface.fill((0, 0, 0, 0))
+                temp_surface.blit(new_surface, (0, 0))
+                temp_surface.set_alpha(alpha)
+                
+                # Draw with offset
+                self.screen.blit(temp_surface, (value_rect.x, value_rect.y + offset_y))
+            
+            # Add some particle effects
+            if random.random() < 0.3:
+                # Create sparkle effect around the toggled option
+                for _ in range(2):
+                    sparkle_x = value_rect.centerx + random.uniform(-value_rect.width/2, value_rect.width/2)
+                    sparkle_y = value_rect.centery + random.uniform(-value_rect.height/2, value_rect.height/2)
+                    
+                    # Get color based on the option
+                    if option == "FULLSCREEN":
+                        color = NEON_YELLOW
+                    elif option == "SOUND":
+                        color = NEON_GREEN
+                    elif option == "MUSIC":
+                        color = ELECTRIC_PURPLE
+                    else:
+                        color = SLEEK_SILVER
+                    
+                    # Create particles directly if particle system is available
+                    try:
+                        if hasattr(pygame.display.get_surface(), "_game"):
+                            game = pygame.display.get_surface()._game
+                            if hasattr(game, "particle_system"):
+                                particle = Particle(
+                                    x=sparkle_x,
+                                    y=sparkle_y,
+                                    color=color,
+                                    size=random.uniform(1, 3),
+                                    velocity=(random.uniform(-30, 30), random.uniform(-30, 30)),
+                                    lifetime=random.uniform(0.3, 0.6),
+                                    shrink=True,
+                                    gravity=0
+                                )
+                                game.particle_system.add_particle(particle)
+                    except:
+                        pass  # Silently fail if particle system is not accessible
+            
+            pygame.display.flip()
+            
+            # Check if animation is complete
+            if progress >= 1.0:
+                break
+            
+            # Handle events during animation
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+            
+            # Cap the frame rate
+            clock.tick(60)
+
     def handle_input(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2392,13 +2787,20 @@ class SettingsMenu:
                     if self.selected_option < len(self.settings):
                         option = list(self.settings.keys())[self.selected_option]
                         values = self.settings[option]
+                        old_value = values[self.current_values[option]]
                         self.current_values[option] = (self.current_values[option] - 1) % len(values)
+                        new_value = values[self.current_values[option]]
+                        
                         # Play menu navigation sound
                         if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                             try:
                                 sound_menu_navigate.play()
                             except:
                                 pass
+                        
+                        # Animate the option toggle
+                        self.animate_option_toggle(option, old_value, new_value)
+                        
                         # Apply the setting
                         result = self.apply_setting(option)
                         if result:
@@ -2407,13 +2809,20 @@ class SettingsMenu:
                     if self.selected_option < len(self.settings):
                         option = list(self.settings.keys())[self.selected_option]
                         values = self.settings[option]
+                        old_value = values[self.current_values[option]]
                         self.current_values[option] = (self.current_values[option] + 1) % len(values)
+                        new_value = values[self.current_values[option]]
+                        
                         # Play menu navigation sound
                         if sound_enabled and hasattr(pygame, "mixer") and pygame.mixer.get_init():
                             try:
                                 sound_menu_navigate.play()
                             except:
                                 pass
+                        
+                        # Animate the option toggle
+                        self.animate_option_toggle(option, old_value, new_value)
+                        
                         # Apply the setting
                         result = self.apply_setting(option)
                         if result:
@@ -2471,7 +2880,13 @@ class SettingsMenu:
                                 # Toggle the setting
                                 option = list(self.settings.keys())[i]
                                 values = self.settings[option]
+                                old_value = values[self.current_values[option]]
                                 self.current_values[option] = (self.current_values[option] + 1) % len(values)
+                                new_value = values[self.current_values[option]]
+                                
+                                # Animate the option toggle
+                                self.animate_option_toggle(option, old_value, new_value)
+                                
                                 # Apply the setting
                                 result = self.apply_setting(option)
                                 if result:
@@ -2971,9 +3386,14 @@ class TransitionEffect:
         self.to_surface = None
         self.direction = "out"  # "in" or "out"
         self.last_update_time = 0
+        self.transition_color = BLACK  # Default transition color
+        
+        # Store original screen content
+        if screen:
+            self.screen_copy = screen.copy()
 
-    def start(self, direction="out", duration=None, callback=None):
-        """Start a transition effect"""
+    def start(self, direction="out", duration=None, callback=None, transition_type=None, color=None):
+        """Start a transition effect with optional parameters"""
         self.direction = direction
         self.progress = 0
         self.running = True
@@ -2981,10 +3401,21 @@ class TransitionEffect:
         self.last_update_time = self.start_time
         self.duration = duration if duration is not None else TRANSITION_SPEED
         self.callback = callback
+        
+        # Update transition type if specified
+        if transition_type:
+            self.transition_type = transition_type
+            
+        # Update transition color if specified
+        if color:
+            self.transition_color = color
 
         # Capture current screen state
         if direction == "out":
             self.from_surface = self.screen.copy()
+        
+        # Store original screen content
+        self.screen_copy = self.screen.copy()
 
     def update(self, dt=None):
         """Update transition progress"""
@@ -3029,27 +3460,35 @@ class TransitionEffect:
             self._draw_slide("down")
         elif self.transition_type == "zoom":
             self._draw_zoom()
+        elif self.transition_type == "pixelate":
+            self._draw_pixelate()
+        elif self.transition_type == "radial":
+            self._draw_radial()
+        elif self.transition_type == "blinds":
+            self._draw_blinds()
+        elif self.transition_type == "rotate":
+            self._draw_rotate()
 
     def _draw_fade(self):
         """Fade transition effect"""
         if self.direction == "out":
             # Fade out: from opaque to transparent
-            alpha = int(255 * (1 - self.progress))
-            overlay = pygame.Surface(
-                (self.screen.get_width(), self.screen.get_height())
-            )
-            overlay.fill(BLACK)
-            overlay.set_alpha(255 - alpha)
-            self.screen.blit(self.from_surface, (0, 0))
-            self.screen.blit(overlay, (0, 0))
-        else:
-            # Fade in: from transparent to opaque
             alpha = int(255 * self.progress)
             overlay = pygame.Surface(
                 (self.screen.get_width(), self.screen.get_height())
             )
-            overlay.fill(BLACK)
-            overlay.set_alpha(255 - alpha)
+            overlay.fill(self.transition_color)
+            overlay.set_alpha(alpha)
+            self.screen.blit(self.from_surface, (0, 0))
+            self.screen.blit(overlay, (0, 0))
+        else:
+            # Fade in: from transparent to opaque
+            alpha = int(255 * (1 - self.progress))
+            overlay = pygame.Surface(
+                (self.screen.get_width(), self.screen.get_height())
+            )
+            overlay.fill(self.transition_color)
+            overlay.set_alpha(alpha)
             if self.to_surface:
                 self.screen.blit(self.to_surface, (0, 0))
             self.screen.blit(overlay, (0, 0))
@@ -3114,12 +3553,12 @@ class TransitionEffect:
             x = (width - scaled_width) // 2
             y = (height - scaled_height) // 2
 
-            self.screen.fill(BLACK)
+            self.screen.fill(self.transition_color)
             self.screen.blit(scaled_surface, (x, y))
 
             # Add fade effect
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, int(255 * self.progress)))
+            overlay.fill((*self.transition_color, int(255 * self.progress)))
             self.screen.blit(overlay, (0, 0))
         else:
             # Zoom in
@@ -3134,12 +3573,206 @@ class TransitionEffect:
                 x = (width - scaled_width) // 2
                 y = (height - scaled_height) // 2
 
-                self.screen.fill(BLACK)
+                self.screen.fill(self.transition_color)
                 self.screen.blit(scaled_surface, (x, y))
 
                 # Add fade effect
                 overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, int(255 * (1 - self.progress))))
+                overlay.fill((*self.transition_color, int(255 * (1 - self.progress))))
+                self.screen.blit(overlay, (0, 0))
+                
+    def _draw_pixelate(self):
+        """Pixelate transition effect"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        
+        if self.from_surface is None:
+            return
+            
+        if self.direction == "out":
+            # Calculate pixel size based on progress
+            pixel_size = int(1 + self.progress * 20)  # 1 to 21 pixels
+            
+            # Create a smaller version of the screen
+            small_width = max(1, width // pixel_size)
+            small_height = max(1, height // pixel_size)
+            
+            # Scale down and then back up to create pixelation
+            small_surface = pygame.transform.scale(self.from_surface, (small_width, small_height))
+            pixelated = pygame.transform.scale(small_surface, (width, height))
+            
+            self.screen.blit(pixelated, (0, 0))
+            
+            # Add fade effect
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            overlay.fill((*self.transition_color, int(150 * self.progress)))
+            self.screen.blit(overlay, (0, 0))
+        else:
+            # Calculate pixel size based on progress
+            pixel_size = int(20 * (1 - self.progress) + 1)  # 21 to 1 pixels
+            
+            if self.to_surface:
+                # Scale down and then back up to create pixelation
+                small_width = max(1, width // pixel_size)
+                small_height = max(1, height // pixel_size)
+                
+                small_surface = pygame.transform.scale(self.to_surface, (small_width, small_height))
+                pixelated = pygame.transform.scale(small_surface, (width, height))
+                
+                self.screen.blit(pixelated, (0, 0))
+                
+                # Add fade effect
+                overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+                overlay.fill((*self.transition_color, int(150 * (1 - self.progress))))
+                self.screen.blit(overlay, (0, 0))
+                
+    def _draw_radial(self):
+        """Radial wipe transition effect"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        
+        if self.from_surface is None:
+            return
+            
+        # Create mask surface
+        mask = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # Calculate center and max radius
+        center_x, center_y = width // 2, height // 2
+        max_radius = math.sqrt(width**2 + height**2) / 2
+        
+        if self.direction == "out":
+            # Calculate radius based on progress
+            radius = max_radius * self.progress
+            
+            # Draw circle on mask
+            pygame.draw.circle(mask, (0, 0, 0, 255), (center_x, center_y), int(radius))
+            
+            # Draw original surface
+            self.screen.blit(self.from_surface, (0, 0))
+            
+            # Draw overlay with hole
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            overlay.fill((*self.transition_color, 255))
+            overlay.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+            self.screen.blit(overlay, (0, 0))
+        else:
+            # Calculate radius based on progress
+            radius = max_radius * (1 - self.progress)
+            
+            if self.to_surface:
+                # Draw destination surface
+                self.screen.blit(self.to_surface, (0, 0))
+                
+                # Draw circle on mask
+                pygame.draw.circle(mask, (0, 0, 0, 255), (center_x, center_y), int(radius))
+                
+                # Draw overlay with hole
+                overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+                overlay.fill((*self.transition_color, 255))
+                overlay.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                self.screen.blit(overlay, (0, 0))
+                
+    def _draw_blinds(self):
+        """Venetian blinds transition effect"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        
+        if self.from_surface is None:
+            return
+            
+        # Number of blinds
+        num_blinds = 12
+        blind_height = height // num_blinds
+        
+        if self.direction == "out":
+            # Draw original surface
+            self.screen.blit(self.from_surface, (0, 0))
+            
+            # Draw blinds
+            for i in range(num_blinds):
+                blind_y = i * blind_height
+                blind_width = int(width * self.progress)
+                
+                # Alternate direction for each blind
+                if i % 2 == 0:
+                    blind_x = 0
+                else:
+                    blind_x = width - blind_width
+                    
+                pygame.draw.rect(
+                    self.screen,
+                    self.transition_color,
+                    (blind_x, blind_y, blind_width, blind_height)
+                )
+        else:
+            if self.to_surface:
+                # Draw destination surface
+                self.screen.blit(self.to_surface, (0, 0))
+                
+                # Draw blinds
+                for i in range(num_blinds):
+                    blind_y = i * blind_height
+                    blind_width = int(width * (1 - self.progress))
+                    
+                    # Alternate direction for each blind
+                    if i % 2 == 0:
+                        blind_x = 0
+                    else:
+                        blind_x = width - blind_width
+                        
+                    pygame.draw.rect(
+                        self.screen,
+                        self.transition_color,
+                        (blind_x, blind_y, blind_width, blind_height)
+                    )
+                    
+    def _draw_rotate(self):
+        """Rotation transition effect"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        
+        if self.from_surface is None:
+            return
+            
+        if self.direction == "out":
+            # Calculate rotation angle and scale
+            angle = 90 * self.progress  # Rotate up to 90 degrees
+            scale = 1 - 0.5 * self.progress  # Scale down to 50%
+            
+            # Create rotated and scaled surface
+            rotated = pygame.transform.rotozoom(self.from_surface, angle, scale)
+            
+            # Position in center
+            rot_rect = rotated.get_rect(center=(width//2, height//2))
+            
+            # Fill background
+            self.screen.fill(self.transition_color)
+            
+            # Draw rotated surface
+            self.screen.blit(rotated, rot_rect)
+            
+            # Add fade effect
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            overlay.fill((*self.transition_color, int(150 * self.progress)))
+            self.screen.blit(overlay, (0, 0))
+        else:
+            if self.to_surface:
+                # Calculate rotation angle and scale
+                angle = 90 * (1 - self.progress)  # Rotate from 90 to 0 degrees
+                scale = 0.5 + 0.5 * self.progress  # Scale up from 50% to 100%
+                
+                # Create rotated and scaled surface
+                rotated = pygame.transform.rotozoom(self.to_surface, angle, scale)
+                
+                # Position in center
+                rot_rect = rotated.get_rect(center=(width//2, height//2))
+                
+                # Fill background
+                self.screen.fill(self.transition_color)
+                
+                # Draw rotated surface
+                self.screen.blit(rotated, rot_rect)
+                
+                # Add fade effect
+                overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+                overlay.fill((*self.transition_color, int(150 * (1 - self.progress))))
                 self.screen.blit(overlay, (0, 0))
 
     def set_to_surface(self, surface):
@@ -3997,7 +4630,7 @@ class Game:
                 car_color = car_colors[self.selected_car]
         
         self.player_car = Car(
-            LANE_POSITIONS[1],
+            LANE_POSITIONS[3],  # Start in the middle lane (lane 3 of 0-7)
             SCREEN_HEIGHT - scale_value(150),
             scale_value(CAR_WIDTH),
             scale_value(CAR_HEIGHT),
@@ -4076,6 +4709,7 @@ class Game:
             self.mission_description = f"Use {self.mission_target} power-ups"
 
     def update_mission_progress(self):
+        """Update mission progress based on the current mission type"""
         if self.game_mode != GAME_MODE_MISSIONS:
             return
 
@@ -4094,6 +4728,10 @@ class Game:
             self.mission_type = (self.mission_type + 1) % 4
             self.set_mission()
             self.mission_progress = 0
+            
+            # Play success sound if available
+            if sound_enabled and hasattr(self, "sound_powerup"):
+                self.sound_powerup.play()
 
     def handle_events(self):
         try:
@@ -4189,7 +4827,12 @@ class Game:
             return False
 
     def show_name_input(self):
-        """Show a screen to input player name for high score"""
+        """Show a screen to input player name for high score with transition animation"""
+        # Add transition animation
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "radial"
+            self.transition.start(direction="in", duration=0.6)
+            
         input_box = pygame.Rect(SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2, 400, 50)
         color_inactive = SLEEK_SILVER
         color_active = NEON_YELLOW
@@ -4300,7 +4943,12 @@ class Game:
         return text
 
     def show_highscores(self, player_name=None):
-        """Show the high scores screen with delete buttons"""
+        """Show the high scores screen with delete buttons and transition animation"""
+        # Add transition animation
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "slide_up"
+            self.transition.start(direction="in", duration=0.4)
+            
         # Define colors
         WHITE = (255, 255, 255)
         BLACK = (0, 0, 0)
@@ -4648,6 +5296,12 @@ class Game:
         slide_duration = 0.3  # seconds
         slide_start_time = time.time()
 
+        # Add a special transition effect for pause menu
+        if hasattr(self, "transition"):
+            # Use a quick blinds transition for pause effect
+            self.transition.transition_type = "blinds"
+            self.transition.start(direction="in", duration=0.3)
+
         # Play pause sound
         if sound_enabled and hasattr(self, "sound_menu_select"):
             self.sound_menu_select.play()
@@ -4847,6 +5501,11 @@ class Game:
         # Global variables that will be updated
         global SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_X, SCALE_Y, LANE_WIDTH, LANE_POSITIONS
         
+        # Add transition animation
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "pixelate"
+            self.transition.start(direction="in", duration=0.5)
+            
         # Get current screen dimensions
         screen_width = self.screen.get_width()
         screen_height = self.screen.get_height()
@@ -4971,7 +5630,7 @@ class Game:
         return (r, g, b)
 
     def draw_road(self):
-
+        """Draw the road with enhanced animations and visual effects"""
         # Use cached background if available for better performance
         if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
             # Only recreate the background when the day phase changes significantly
@@ -4980,34 +5639,6 @@ class Game:
                 # Get color for this y position
                 color = self.get_sky_color(y)
                 pygame.draw.line(background, color, (0, y), (SCREEN_WIDTH, y))
-            
-            # Cache the background and day phase
-            self.cached_background = background
-            self.cached_day_phase = self.day_phase
-        else:
-            # Use the cached background
-            background = self.cached_background
-    
-        # Create gradient background for the road based on time of day
-        # Use cached background if available for better performance
-        if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
-            # Only recreate the background when the day phase changes significantly
-            background = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-            for y in range(SCREEN_HEIGHT):
-                # Get color for this y position
-                color = self.get_sky_color(y)
-                pygame.draw.line(background, color, (0, y), (SCREEN_WIDTH, y))
-            
-            # Cache the background and day phase
-            self.cached_background = background
-            self.cached_day_phase = self.day_phase
-        else:
-            # Use the cached background
-            background = self.cached_background
-        # Use a cached background if possible to avoid redrawing every frame
-        if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
-            # Only recreate the background when the day phase changes significantly
-                # Get color for this y position
             
             # Cache the background and day phase
             self.cached_background = background
@@ -5045,52 +5676,265 @@ class Game:
                         star["brightness"] * (0.7 + 0.3 * twinkle) * star_visibility
                     )
 
-                # Draw star with appropriate brightness
-                color = (
-                    int(255 * brightness),
-                    int(255 * brightness),
-                    int(255 * brightness),
-                )
-                pygame.draw.circle(
-                    self.screen, color, (star["x"], star["y"]), star["size"]
-                )
+                    # Draw star with appropriate brightness
+                    color = (
+                        int(255 * brightness),
+                        int(255 * brightness),
+                        int(255 * brightness),
+                    )
+                    
+                    # Draw star with glow effect
+                    if brightness > 0.7:  # Only add glow to brighter stars
+                        glow_radius = star["size"] * 2
+                        glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+                        glow_color = (255, 255, 255, int(50 * brightness))
+                        pygame.draw.circle(
+                            glow_surface,
+                            glow_color,
+                            (glow_radius, glow_radius),
+                            glow_radius
+                        )
+                        self.screen.blit(
+                            glow_surface,
+                            (star["x"] - glow_radius, star["y"] - glow_radius)
+                        )
+                    
+                    # Draw the star itself
+                    pygame.draw.circle(
+                        self.screen, color, (star["x"], star["y"]), star["size"]
+                    )
+                    
+                    # Occasionally add a shooting star
+                    if random.random() < 0.0001 and star_visibility > 0.8:  # Very rare
+                        self.create_shooting_star(star["x"], star["y"])
 
         # Draw lane markings with metallic effect
-        for i in range(9):  # Changed from 7 to 9 for 8 lanes
+        for i in range(9):  # 8 lanes = 9 lines
             x = i * LANE_WIDTH
             pygame.draw.line(
                 self.screen, METALLIC_SILVER, (x, 0), (x, SCREEN_HEIGHT), 3
             )
 
         # Draw dashed lines in the middle of lanes with neon effect
-        for i in range(1, 8):  # Changed from 1-6 to 1-8 for 8 lanes
+        # Use time-based animation for moving dashed lines
+        line_offset = int((time.time() * self.speed * 20) % 80)  # Moving effect based on speed
+        
+        for i in range(1, 8):  # 8 lanes = 7 middle lines
             x = i * LANE_WIDTH
-            for y in range(0, SCREEN_HEIGHT, 40):
+            
+            # Draw dashed lines with animation
+            for y in range(-line_offset, SCREEN_HEIGHT, 80):
                 # Add a subtle glow effect to the lane markers
                 for offset in range(2, 0, -1):
-                    pygame.draw.line(
-                        self.screen,
-                        (
-                            min(WHITE[0] - offset * 30, 255),
-                            min(WHITE[1] - offset * 30, 255),
-                            min(WHITE[2], 255),
-                        ),
-                        (x - offset, y),
-                        (x - offset, y + 20),
-                        1,
+                    glow_color = (
+                        min(WHITE[0] - offset * 30, 255),
+                        min(WHITE[1] - offset * 30, 255),
+                        min(WHITE[2], 255),
+                        150 - offset * 50  # Add alpha for glow
                     )
-                    pygame.draw.line(
-                        self.screen,
-                        (
-                            min(WHITE[0] - offset * 30, 255),
-                            min(WHITE[1] - offset * 30, 255),
-                            min(WHITE[2], 255),
-                        ),
-                        (x + offset, y),
-                        (x + offset, y + 20),
-                        1,
+                    
+                    # Create a surface for the glow
+                    glow_surface = pygame.Surface((6 + offset*4, 40 + offset*4), pygame.SRCALPHA)
+                    pygame.draw.rect(
+                        glow_surface,
+                        glow_color,
+                        (0, 0, 6 + offset*4, 40 + offset*4),
+                        0,
+                        3  # Rounded corners
                     )
-                pygame.draw.line(self.screen, WHITE, (x, y), (x, y + 20), 2)
+                    
+                    # Draw the glow
+                    self.screen.blit(
+                        glow_surface,
+                        (x - (6 + offset*4)//2, y - offset*2)
+                    )
+                
+                # Draw the main line
+                pygame.draw.rect(
+                    self.screen,
+                    WHITE,
+                    (x - 2, y, 4, 40),
+                    0,
+                    2  # Rounded corners
+                )
+        
+        # Draw road texture/details
+        if hasattr(self, 'road_details_timer'):
+            self.road_details_timer -= 0.016  # Assuming ~60fps
+            if self.road_details_timer <= 0:
+                self.road_details_timer = random.uniform(0.5, 2.0)
+                # Add random road details (cracks, patches, etc.)
+                self.add_road_detail()
+        else:
+            self.road_details_timer = random.uniform(0.5, 2.0)
+            self.road_details = []
+        
+        # Draw existing road details
+        if hasattr(self, 'road_details'):
+            for detail in self.road_details[:]:
+                # Move detail based on game speed
+                detail['y'] += self.speed * 2
+                
+                # Draw the detail
+                if detail['type'] == 'crack':
+                    points = [(x + detail['x_offset'], y + detail['y']) for x, y in detail['points']]
+                    pygame.draw.lines(self.screen, detail['color'], False, points, detail['width'])
+                elif detail['type'] == 'patch':
+                    pygame.draw.rect(
+                        self.screen,
+                        detail['color'],
+                        (detail['x'], detail['y'], detail['width'], detail['height']),
+                        0,
+                        3  # Rounded corners
+                    )
+                
+                # Remove if off screen
+                if detail['y'] > SCREEN_HEIGHT + 50:
+                    self.road_details.remove(detail)
+    
+    def create_shooting_star(self, x, y):
+        """Create a shooting star animation"""
+        if not hasattr(self, 'shooting_stars'):
+            self.shooting_stars = []
+            
+        # Create a new shooting star
+        angle = random.uniform(math.pi/4, math.pi/2)  # Angle between 45 and 90 degrees
+        if random.random() < 0.5:
+            angle = math.pi - angle  # 50% chance to go left instead of right
+            
+        speed = random.uniform(300, 500)
+        length = random.uniform(50, 150)
+        
+        self.shooting_stars.append({
+            'x': x,
+            'y': y,
+            'angle': angle,
+            'speed': speed,
+            'length': length,
+            'width': random.uniform(1, 3),
+            'time': 0,
+            'duration': random.uniform(0.5, 1.5)
+        })
+    
+    def update_shooting_stars(self, dt):
+        """Update shooting star animations"""
+        if not hasattr(self, 'shooting_stars'):
+            return
+            
+        for star in self.shooting_stars[:]:
+            star['time'] += dt
+            
+            # Remove if duration exceeded
+            if star['time'] >= star['duration']:
+                self.shooting_stars.remove(star)
+                continue
+                
+            # Calculate current position
+            progress = star['time'] / star['duration']
+            distance = star['speed'] * progress
+            
+            # Calculate start and end points
+            current_x = star['x'] + math.cos(star['angle']) * distance
+            current_y = star['y'] + math.sin(star['angle']) * distance
+            
+            tail_x = current_x - math.cos(star['angle']) * star['length'] * (1 - progress)
+            tail_y = current_y - math.sin(star['angle']) * star['length'] * (1 - progress)
+            
+            # Draw the shooting star
+            # Create a surface for the glow
+            glow_surface = pygame.Surface((int(star['length']*1.5), int(star['length']*1.5)), pygame.SRCALPHA)
+            
+            # Draw the tail with gradient
+            points = []
+            segments = 10
+            for i in range(segments + 1):
+                seg_progress = i / segments
+                seg_x = tail_x + (current_x - tail_x) * seg_progress
+                seg_y = tail_y + (current_y - tail_y) * seg_progress
+                points.append((seg_x, seg_y))
+                
+                # Draw glow points
+                if i % 2 == 0:  # Only every other point for performance
+                    glow_alpha = int(255 * (1 - seg_progress) * (1 - progress))
+                    glow_size = star['width'] * 3 * (1 - seg_progress)
+                    glow_color = (255, 255, 255, glow_alpha)
+                    
+                    pygame.draw.circle(
+                        self.screen,
+                        glow_color,
+                        (int(seg_x), int(seg_y)),
+                        glow_size
+                    )
+            
+            # Draw the main line
+            if len(points) >= 2:
+                # Calculate alpha based on progress
+                line_alpha = int(255 * (1 - progress))
+                line_color = (255, 255, 255, line_alpha)
+                
+                # Draw with pygame.draw.lines for better performance
+                pygame.draw.lines(
+                    self.screen,
+                    line_color,
+                    False,
+                    points,
+                    int(star['width'] * (1 - progress/2))
+                )
+    
+    def add_road_detail(self):
+        """Add a random road detail"""
+        if not hasattr(self, 'road_details'):
+            self.road_details = []
+            
+        # Limit the number of details for performance
+        if len(self.road_details) >= 10:
+            return
+            
+        # Choose a random lane
+        lane = random.randint(0, 7)  # Updated for 8 lanes
+        lane_x = lane * LANE_WIDTH
+        
+        # Choose a random detail type
+        detail_type = random.choice(['crack', 'patch'])
+        
+        if detail_type == 'crack':
+            # Create a zigzag crack
+            points = []
+            x_offset = random.randint(-LANE_WIDTH//3, LANE_WIDTH//3)
+            y_start = -50  # Start above screen
+            
+            # Create zigzag points
+            segments = random.randint(3, 7)
+            segment_length = random.randint(10, 30)
+            
+            for i in range(segments):
+                x_deviation = random.randint(-10, 10)
+                points.append((x_offset + x_deviation, y_start + i * segment_length))
+                
+            # Add the detail
+            self.road_details.append({
+                'type': 'crack',
+                'x_offset': lane_x,
+                'y': y_start,
+                'points': points,
+                'width': random.randint(1, 3),
+                'color': (80, 80, 80)
+            })
+        else:  # patch
+            # Create a road patch
+            width = random.randint(LANE_WIDTH//4, LANE_WIDTH//2)
+            height = random.randint(20, 50)
+            x = lane_x - width//2 + random.randint(-LANE_WIDTH//4, LANE_WIDTH//4)
+            
+            # Add the detail
+            self.road_details.append({
+                'type': 'patch',
+                'x': x,
+                'y': -height,
+                'width': width,
+                'height': height,
+                'color': (70, 70, 70)
+            })
 
     def draw(self):
         try:
@@ -5582,7 +6426,7 @@ class Game:
                 # Check if there are too many obstacles already
                 if len(self.obstacles) < 2:  # Reduced max obstacles from 3 to 2
                     # Choose a lane that doesn't already have an obstacle or car nearby
-                    available_lanes = list(range(6))
+                    available_lanes = list(range(8))  # Updated for 8 lanes
                     
                     # Remove lanes that have obstacles
                     for obstacle in self.obstacles:
@@ -5591,7 +6435,7 @@ class Game:
                             # Also remove adjacent lanes for better spacing
                             if obstacle.lane > 0 and obstacle.lane - 1 in available_lanes:
                                 available_lanes.remove(obstacle.lane - 1)
-                            if obstacle.lane < 5 and obstacle.lane + 1 in available_lanes:
+                            if obstacle.lane < 7 and obstacle.lane + 1 in available_lanes:  # Updated for 8 lanes
                                 available_lanes.remove(obstacle.lane + 1)
                     
                     # Remove lanes that have cars near the top
@@ -5615,7 +6459,7 @@ class Game:
                 # Check if there are too many cars already
                 if len(self.other_cars) < 2:  # Reduced max cars from 3 to 2
                     # Choose a lane that doesn't already have a car or obstacle nearby
-                    available_lanes = list(range(6))
+                    available_lanes = list(range(8))  # Updated for 8 lanes
                     
                     # Remove lanes that have cars
                     for car in self.other_cars:
@@ -5624,7 +6468,7 @@ class Game:
                             # Also remove adjacent lanes for better spacing
                             if car.lane > 0 and car.lane - 1 in available_lanes:
                                 available_lanes.remove(car.lane - 1)
-                            if car.lane < 5 and car.lane + 1 in available_lanes:
+                            if car.lane < 7 and car.lane + 1 in available_lanes:  # Updated for 8 lanes
                                 available_lanes.remove(car.lane + 1)
                     
                     # Remove lanes that have obstacles near the top
@@ -5645,7 +6489,7 @@ class Game:
 
             # Generate new power-ups
             if current_time - self.last_powerup_time > random.uniform(5.0, 15.0):
-                lane = random.randint(0, 5)  # Changed from 0-3 to 0-5 for 6 lanes
+                lane = random.randint(0, 7)  # Updated for 8 lanes
                 powerup_type = random.choice(["boost", "shield", "magnet", "slow_mo"])
                 self.powerups.append(PowerUp(lane, powerup_type))
                 self.last_powerup_time = current_time
@@ -5654,7 +6498,7 @@ class Game:
             if current_time - self.last_coin_time > random.uniform(1.0, 3.0):  # Increased interval
                 # Limit the number of coins on screen
                 if len(self.coins) < 6:  # Reduced for performance  # Add a limit to coins
-                    lane = random.randint(0, 5)
+                    lane = random.randint(0, 7)  # Updated for 8 lanes
                     x = LANE_POSITIONS[lane] + random.randint(
                         -LANE_WIDTH // 4, LANE_WIDTH // 4
                     )
@@ -5895,6 +6739,11 @@ class Game:
     def show_menu(self):
         print("Opening main menu...")
 
+        # Create a fade-in transition effect
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "fade"
+            self.transition.start(direction="in", duration=0.5)
+
         # Start playing menu music if not already playing
         if (
             sound_enabled
@@ -6120,35 +6969,54 @@ class Game:
 
             # Draw game over text if applicable
             if self.game_over and hasattr(self, 'game_has_been_played') and self.game_has_been_played:
-                game_over_text = title_font.render("GAME OVER", True, BRIGHT_RED)
+                # Add faster blinking effect to game over text
+                blink_rate = 1.2  # Faster blink rate (in seconds)
+                blink_value = (math.sin(pygame.time.get_ticks() * 0.001 * blink_rate) + 1) / 2  # Value between 0 and 1
+                
+                # Only show text when blink_value is above threshold (creates blinking effect)
+                if blink_value > 0.2:  # Show text most of the time with brief disappearances
+                    # Calculate alpha based on blink value for smooth fade in/out
+                    text_alpha = int(255 * min(1.0, blink_value * 1.8))
+                    
+                    # Create game over text with appropriate alpha
+                    game_over_surface = pygame.Surface(title_font.size("GAME OVER"), pygame.SRCALPHA)
+                    temp_text = title_font.render("GAME OVER", True, BRIGHT_RED)
+                    game_over_surface.blit(temp_text, (0, 0))
+                    game_over_surface.set_alpha(text_alpha)
+                    
+                    # Position the text
+                    game_over_rect = game_over_surface.get_rect(
+                        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)
+                    )
+                    
+                    # Add glow effect to game over text - intensity varies with blink
+                    glow_intensity = blink_value * 1.2  # Intensify the glow effect
+                    for offset in range(8, 0, -1):
+                        glow_rect = game_over_rect.copy()
+                        glow_rect.inflate_ip(offset * 3 * glow_intensity, offset * 3 * glow_intensity)
+                        glow_color = (
+                            min(BRIGHT_RED[0], 255),
+                            min(BRIGHT_RED[1] + int(offset * 5 * glow_intensity), 255),
+                            min(BRIGHT_RED[2] + int(offset * 5 * glow_intensity), 255),
+                        )
+                        pygame.draw.rect(
+                            self.screen,
+                            glow_color,
+                            glow_rect,
+                            2,
+                            border_radius=5,
+                        )
+                    
+                    # Draw the game over text
+                    self.screen.blit(game_over_surface, game_over_rect)
+                
+                # Score text doesn't blink - always visible
                 score_text = menu_font.render(
                     f"FINAL SCORE: {self.score}", True, NEON_YELLOW
-                )
-
-                game_over_rect = game_over_text.get_rect(
-                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)
                 )
                 score_rect = score_text.get_rect(
                     center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 80)
                 )
-
-                # Add glow effect to game over text
-                for offset in range(8, 0, -1):
-                    glow_rect = game_over_rect.copy()
-                    glow_rect.inflate_ip(offset * 3, offset * 3)
-                    pygame.draw.rect(
-                        self.screen,
-                        (
-                            min(BRIGHT_RED[0], 255),
-                            min(BRIGHT_RED[1], 255),
-                            min(BRIGHT_RED[2] + offset * 5, 255),
-                        ),
-                        glow_rect,
-                        2,
-                        border_radius=5,
-                    )
-
-                self.screen.blit(game_over_text, game_over_rect)
                 self.screen.blit(score_text, score_rect)
 
             # Draw menu buttons
@@ -6240,6 +7108,25 @@ class Game:
         """Helper method to start a new game with transition effects"""
         try:
             print(f"Starting new game with mode: {game_mode}")
+            
+            # Create a transition effect based on game mode
+            if hasattr(self, "transition"):
+                if game_mode == GAME_MODE_ENDLESS:
+                    self.transition.transition_type = "fade"
+                    self.transition.transition_color = (0, 0, 0)  # Black
+                elif game_mode == GAME_MODE_TIME_ATTACK:
+                    self.transition.transition_type = "slide_left"
+                    self.transition.transition_color = (50, 0, 50)  # Dark purple
+                elif game_mode == GAME_MODE_MISSIONS:
+                    self.transition.transition_type = "zoom"
+                    self.transition.transition_color = (0, 50, 0)  # Dark green
+                elif game_mode == GAME_MODE_RACE:
+                    self.transition.transition_type = "radial"
+                    self.transition.transition_color = (50, 0, 0)  # Dark red
+                
+                # Start the transition
+                self.transition.start(direction="in", duration=0.7)
+            
             self.game_mode = game_mode
             self.reset_game()
             return True
@@ -6471,7 +7358,12 @@ class Game:
             clock.tick(60)
 
     def show_garage_menu(self, background_surface):
-        """Show the garage menu for car selection and customization"""
+        """Show the garage menu for car selection and customization with transition animation"""
+        # Add transition animation
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "zoom"
+            self.transition.start(direction="in", duration=0.5)
+            
         # Define colors
         WHITE = (255, 255, 255)
         BLACK = (0, 0, 0)
@@ -7007,8 +7899,13 @@ class Game:
             clock.tick(60)
 
     def show_game_mode_menu(self):
-        """Show the game mode selection menu"""
+        """Show the game mode selection menu with transition animation"""
         print("Opening game mode menu...")
+
+        # Create a slide transition effect
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "slide_left"
+            self.transition.start(direction="in", duration=0.4)
 
         # Ensure menu music is playing
         if (
@@ -7261,6 +8158,11 @@ class Game:
             running = True
             in_menu = True  # Start in menu first
             last_frame_time = time.time()
+
+            # Create initial fade-in transition for game start
+            if hasattr(self, "transition"):
+                self.transition.transition_type = "fade"
+                self.transition.start(direction="in", duration=0.8)
 
             while running:
                 # Calculate delta time for frame-rate independent animations

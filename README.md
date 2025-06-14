@@ -20,6 +20,7 @@ A fast-paced, arcade-style car racing game built with Pygame. Navigate through t
   - Particle systems for crashes, boosts, and effects
   - Dynamic lighting based on time of day
   - Smooth animations and transitions
+  - **NEW**: Animated option toggling in settings menu
 
 - **Customization**:
   - Multiple car options with different stats
@@ -62,24 +63,15 @@ A fast-paced, arcade-style car racing game built with Pygame. Navigate through t
 - **F11**: Toggle fullscreen
 - **X**: Dismiss tutorial prompts
 
-## Game Structure
-
-- `car_game.py`: Main game file with all classes and game logic
-- `fonts/`: Directory for game fonts
-- `sounds/`: Directory for sound effects and music
-- `highscores.json`: Persistent storage for high scores
-
 ## Directory Structure
 
 ```
 car_game_/
 ├── car_game.py          # Main game file
-├── car_game_advanced.py # Advanced version with additional features
 ├── README.md            # This file
 ├── requirements.txt     # Dependencies
 ├── highscores.json      # High score data
 ├── bgm.jpg              # Background image
-├── cleanup.sh           # Utility script
 ├── fonts/               # Font files
 │   └── PixelifySans-*.ttf
 └── sounds/              # Sound files
@@ -88,17 +80,6 @@ car_game_/
     ├── powerup.wav
     └── ...
 ```
-
-## Development
-
-The game is built using object-oriented programming principles with the following main classes:
-
-- `Game`: Main game controller
-- `Car`: Player car with controls and power-ups
-- `Obstacle`, `OtherCar`: Traffic and obstacles
-- `PowerUp`, `Coin`: Collectible items
-- `ParticleSystem`: Visual effects manager
-- `HighScoreManager`: Score tracking and persistence
 
 ## Credits
 
