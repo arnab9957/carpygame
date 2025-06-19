@@ -5363,6 +5363,10 @@ class Game:
         # Pause engine sound if it's playing
         if sound_enabled and hasattr(self, "engine_channel") and self.engine_playing:
             self.engine_channel.pause()
+            
+        # Pause background music
+        if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+            pygame.mixer.music.pause()
 
         # Create pause menu
         pause_menu = PauseMenu(self.screen, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -5462,6 +5466,10 @@ class Game:
                     and self.engine_playing
                 ):
                     self.engine_channel.unpause()
+                    
+                # Resume background music
+                if pygame.mixer.get_init():
+                    pygame.mixer.music.unpause()
 
                 # Slide-out animation
                 slide_out_progress = 0
@@ -5516,6 +5524,9 @@ class Game:
                 ):
                     self.engine_channel.stop()
                     self.engine_playing = False
+                    
+                # Stop background music when going to main menu
+                self.stop_background_music()
 
                 # Slide-out animation
                 slide_out_progress = 0
@@ -7482,8 +7493,8 @@ class Game:
                     background, NEON_YELLOW, (start_x, 0), (end_x, SCREEN_HEIGHT), 1
                 )
 
-        title_font = get_font(72, bold=True)
-        menu_font = get_font(48)
+        title_font = get_font(min(72, SCREEN_HEIGHT // 12), bold=True)  # Responsive title font
+        menu_font = get_font(min(48, SCREEN_HEIGHT // 18))  # Responsive menu font
 
         # Draw title
         title_text = title_font.render("CAR RACING", True, NEON_YELLOW)
@@ -7681,9 +7692,9 @@ class Game:
                     game_over_surface.blit(temp_text, (0, 0))
                     game_over_surface.set_alpha(text_alpha)
                     
-                    # Position the text
+                    # Position the text with more space from title
                     game_over_rect = game_over_surface.get_rect(
-                        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)
+                        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 20)  # Added 20px more space from title
                     )
                     
                     # Add glow effect to game over text - intensity varies with blink
@@ -7708,22 +7719,76 @@ class Game:
                     self.screen.blit(game_over_surface, game_over_rect)
                 
                 # Score text doesn't blink - always visible
-                score_text = menu_font.render(
+                stats_font = get_font(min(36, SCREEN_HEIGHT // 24))  # Smaller font for stats
+                score_text = stats_font.render(
                     f"FINAL SCORE: {self.score}", True, NEON_YELLOW
                 )
                 score_rect = score_text.get_rect(
-                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 80)
+                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 90)  # Slightly reduced spacing
                 )
                 self.screen.blit(score_text, score_rect)
+                
+                # Coin count text - always visible after game over
+                coin_text = stats_font.render(
+                    f"💰 COINS COLLECTED: {self.coins_collected}", True, COIN_COLOR
+                )
+                coin_rect = coin_text.get_rect(
+                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 125)  # Adjusted spacing
+                )
+                
+                # Add a subtle glow effect to the coin text
+                for offset in range(2, 0, -1):  # Reduced glow effect
+                    glow_color = (
+                        min(COIN_COLOR[0], 255),
+                        min(COIN_COLOR[1] + offset * 10, 255),
+                        min(COIN_COLOR[2] + offset * 10, 255),
+                    )
+                    glow_text = stats_font.render(
+                        f"💰 COINS COLLECTED: {self.coins_collected}", True, glow_color
+                    )
+                    glow_rect = coin_rect.copy()
+                    glow_rect.inflate_ip(offset * 2, offset * 2)
+                    self.screen.blit(glow_text, glow_rect)
+                
+                self.screen.blit(coin_text, coin_rect)
+                
+                # Distance traveled text
+                distance_text = stats_font.render(
+                    f"🏁 DISTANCE: {int(self.distance_traveled)}m", True, NEON_GREEN
+                )
+                distance_rect = distance_text.get_rect(
+                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 160)  # Adjusted spacing
+                )
+                self.screen.blit(distance_text, distance_rect)
 
             # Draw menu buttons
             button_rects = []
             currently_selected = -1
 
+            # Calculate starting position for menu buttons to avoid overlap with game over stats
+            if self.game_over and hasattr(self, 'game_has_been_played') and self.game_has_been_played:
+                # If game over stats are shown, start menu buttons after the stats with minimum spacing
+                stats_end_y = SCREEN_HEIGHT // 3 + 160  # After distance text (updated position)
+                min_spacing = 60  # Good spacing between stats and menu
+                menu_start_y = stats_end_y + min_spacing
+            else:
+                # Normal menu without game over stats - add more space from title
+                menu_start_y = SCREEN_HEIGHT // 2 + 20  # Added 20px more space
+
+            # Ensure menu doesn't go off screen - adjust spacing if needed
+            menu_items_count = len(options)
+            menu_spacing = 60  # Reduced from 65 to ensure better fit
+            total_menu_height = menu_items_count * menu_spacing
+            
+            if menu_start_y + total_menu_height > SCREEN_HEIGHT - 80:  # Increased bottom margin
+                # Reduce spacing if menu would go off screen
+                available_height = SCREEN_HEIGHT - 80 - menu_start_y
+                menu_spacing = max(40, available_height // menu_items_count)  # Minimum 40px spacing
+
             for i, (text, color, key) in enumerate(options):
                 option_text = menu_font.render(text, True, color)
                 option_rect = option_text.get_rect(
-                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70 * i)
+                    center=(SCREEN_WIDTH // 2, menu_start_y + menu_spacing * i)
                 )
 
                 button_rect = option_rect.copy()
@@ -8856,8 +8921,7 @@ class Game:
             in_menu = True  # Start in menu first
             last_frame_time = time.time()
 
-            # Start background music
-            self.play_background_music()
+            # Don't start background music in menu - only during gameplay
 
             # Create initial fade-in transition for game start
             if hasattr(self, "transition"):
@@ -8902,6 +8966,9 @@ class Game:
                         # Start the game
                         in_menu = False
                         print("Starting game with mode:", self.game_mode)
+
+                        # Start background music for gameplay
+                        self.play_background_music()
 
                         # Start a transition effect
                         self.transition.start(direction="in", duration=0.5)
@@ -8986,6 +9053,9 @@ class Game:
                         # Game over, return to menu
                         in_menu = True
                         print("Game over, returning to menu")
+                        
+                        # Stop background music when returning to menu
+                        self.stop_background_music()
 
                 # Maintain consistent frame rate - use target_fps variable
                 self.clock.tick(target_fps)  # Fixed at 30 FPS for better performance
