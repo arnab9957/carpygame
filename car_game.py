@@ -9,6 +9,9 @@ import os
 import traceback
 from typing import List, Tuple, Dict, Any, Optional
 
+# Music player has been removed, we'll handle music directly
+MusicPlayer = None
+
 # For smooth transitions
 from pygame.locals import *
 
@@ -521,11 +524,13 @@ class ParticleSystem:
     def __init__(self):
         self.particles: List[Particle] = []
         self.last_update_time = time.time()
-
+        # Pre-create some surfaces for common particle sizes to improve performance
+        self.surface_cache = {}
+        
     def add_particle(self, particle: Particle) -> None:
         """Add a particle with a limit for performance"""
-        # Limit total particles for performance
-        if len(self.particles) >= 100:  # Increased limit for better visual effects
+        # Stricter limit on total particles for better performance
+        if len(self.particles) >= 50:  # Reduced from 100 to 50
             # Replace oldest particle instead of just dropping new ones
             oldest_index = 0
             oldest_time = float('inf')
@@ -548,29 +553,31 @@ class ParticleSystem:
         # Cap dt to avoid large jumps
         dt = min(dt, 0.1)
 
-        # Use a more efficient approach to update and filter particles
-        active_particles = []
-        for particle in self.particles:
+        # More efficient in-place filtering
+        i = 0
+        while i < len(self.particles):
+            particle = self.particles[i]
             particle.update(dt)
             if particle.is_alive():
-                active_particles.append(particle)
-                
-        # Replace the list with only active particles
-        self.particles = active_particles
+                i += 1
+            else:
+                # Remove dead particles in-place (faster than creating a new list)
+                self.particles[i] = self.particles[-1]
+                self.particles.pop()
 
     def draw(self, screen: pygame.Surface) -> None:
         """Draw all particles with improved performance"""
-        # Use a more efficient approach by avoiding try-except in the main loop
+        # Batch similar particles together to reduce surface creation
         for particle in self.particles:
             if particle.lifetime <= 0:
                 continue
 
             try:
-                # Create a surface with per-pixel alpha
-                particle_surface = pygame.Surface(
-                    (particle.size * 2, particle.size * 2), pygame.SRCALPHA
-                )
-
+                # Round size to nearest integer to improve cache hits
+                size = int(particle.size)
+                if size <= 0:
+                    continue
+                    
                 # Make sure alpha is within valid range
                 alpha = max(0, min(255, particle.alpha))
 
@@ -578,80 +585,74 @@ class ParticleSystem:
                 r = max(0, min(255, particle.color[0]))
                 g = max(0, min(255, particle.color[1]))
                 b = max(0, min(255, particle.color[2]))
-
+                
+                # Use cached surface if available for this size
+                surface_key = size
+                if surface_key not in self.surface_cache:
+                    # Create and cache a new surface for this size
+                    self.surface_cache[surface_key] = pygame.Surface(
+                        (size * 2, size * 2), pygame.SRCALPHA
+                    )
+                    
+                # Get the cached surface and clear it
+                particle_surface = self.surface_cache[surface_key]
+                particle_surface.fill((0, 0, 0, 0))
+                
                 # Draw the particle with alpha
                 pygame.draw.circle(
                     particle_surface,
                     (r, g, b, alpha),
-                    (particle.size, particle.size),
-                    particle.size,
+                    (size, size),
+                    size,
                 )
 
                 # Blit the particle surface onto the screen
-                screen.blit(particle_surface, (particle.x - particle.size, particle.y - particle.size))
+                screen.blit(particle_surface, (particle.x - size, particle.y - size))
             except:
                 # Silently fail if there's an error drawing a particle
                 pass
 
     def create_spark(
-        self, x: float, y: float, count: int = 10, intensity: float = 1.0
+        self, x: float, y: float, count: int = 5, intensity: float = 1.0
     ) -> None:
-        """Create spark particles at the given position with adjustable intensity"""
+        """Create spark particles at the given position with adjustable intensity - optimized version"""
         for _ in range(count):
             # Random velocity in all directions
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(50, 150) * intensity * scale_value(1.0)
             velocity = (math.cos(angle) * speed, math.sin(angle) * speed)
 
-            # Random color variations of yellow/orange
+            # Simplified color choices - fewer options
             color_choice = random.choice(
                 [
                     (255, 255, 0),  # Yellow
-                    (255, 200, 0),  # Gold
                     (255, 165, 0),  # Orange
-                    (255, 140, 0),  # Dark Orange
-                    (255, 255, 224),  # Light Yellow
                 ]
             )
 
-            # Add some red sparks for more dramatic effect
-            if random.random() < 0.3:
-                color_choice = random.choice(
-                    [
-                        (255, 0, 0),  # Red
-                        (255, 69, 0),  # Red-Orange
-                        (178, 34, 34),  # Firebrick
-                    ]
-                )
-
             # Create the particle with enhanced properties based on intensity
             particle = Particle(
-                x=x
-                + random.uniform(-5, 5)
-                * intensity
-                * scale_value(1.0),  # Add some position variation
+                x=x + random.uniform(-5, 5) * intensity * scale_value(1.0),
                 y=y + random.uniform(-5, 5) * intensity * scale_value(1.0),
                 color=color_choice,
                 size=random.uniform(1, 3) * intensity * scale_value(1.0),
                 velocity=velocity,
-                lifetime=random.uniform(0.2, 0.8) * intensity,
+                lifetime=random.uniform(0.2, 0.6) * intensity,  # Shorter lifetime
                 shrink=True,
-                gravity=random.uniform(-10, 10)
-                * intensity
-                * scale_value(1.0),  # Some sparks rise, some fall
+                gravity=random.uniform(-10, 10) * intensity * scale_value(1.0),
             )
             self.add_particle(particle)
 
-            # Add a glow effect for some particles
-            if random.random() < 0.3:
+            # Add a glow effect for fewer particles
+            if random.random() < 0.2:  # Reduced from 0.3 to 0.2
                 glow = Particle(
                     x=particle.x,
                     y=particle.y,
                     color=color_choice,
-                    size=particle.size * 2,
+                    size=particle.size * 1.5,  # Smaller glow (reduced from 2)
                     velocity=particle.velocity,
                     lifetime=particle.lifetime * 0.7,
-                    alpha=100,
+                    alpha=80,  # Reduced from 100
                     shrink=True,
                     gravity=particle.gravity,
                 )
@@ -661,10 +662,10 @@ class ParticleSystem:
         self,
         x: float,
         y: float,
-        count: int = 5,
+        count: int = 3,  # Reduced default from 5 to 3
         color_base: Tuple[int, int, int] = None,
     ) -> None:
-        """Create smoke particles at the given position with optional color base"""
+        """Create smoke particles at the given position with optional color base - optimized version"""
         for _ in range(count):
             # Upward and slightly random velocity
             velocity = (random.uniform(-10, 10), random.uniform(-30, -10))
@@ -686,18 +687,16 @@ class ParticleSystem:
                 x=x + random.uniform(-8, 8),  # Add position variation
                 y=y + random.uniform(-8, 8),
                 color=color,
-                size=random.uniform(5, 20),  # Larger size range
+                size=random.uniform(5, 15),  # Smaller size range (was 5-20)
                 velocity=velocity,
-                lifetime=random.uniform(0.5, 2.5),  # Longer lifetime
-                shrink=random.choice(
-                    [True, False]
-                ),  # Sometimes shrink, sometimes expand
+                lifetime=random.uniform(0.5, 1.5),  # Shorter lifetime (was 0.5-2.5)
+                shrink=True,  # Always shrink for consistency
                 gravity=random.uniform(-8, -2),  # Variable rise speed
             )
             self.add_particle(particle)
 
-            # Add some smaller particles for texture
-            if random.random() < 0.5:
+            # Add smaller particles less frequently
+            if random.random() < 0.3:  # Reduced from 0.5 to 0.3
                 small_particle = Particle(
                     x=particle.x + random.uniform(-5, 5),
                     y=particle.y + random.uniform(-5, 5),
@@ -714,17 +713,17 @@ class ParticleSystem:
                 self.add_particle(small_particle)
 
     def create_crash(self, x: float, y: float) -> None:
-        """Create an enhanced crash effect with multiple particle types"""
-        # Create a burst of sparks with high intensity
-        self.create_spark(x, y, count=15, intensity=1.5)  # Reduced for performance
+        """Create an enhanced crash effect with multiple particle types but optimized for performance"""
+        # Create a burst of sparks with high intensity but fewer particles
+        self.create_spark(x, y, count=8, intensity=1.5)  # Reduced from 15 to 8
 
-        # Create smoke with different colors for a more dramatic effect
-        self.create_smoke(x, y, count=5)  # Reduced for performance - Regular gray smoke
-        self.create_smoke(x, y, count=10, color_base=(100, 100, 100))  # Dark smoke
-        self.create_smoke(x, y, count=8, color_base=(50, 50, 50))  # Very dark smoke
+        # Create smoke with different colors for a more dramatic effect but fewer particles
+        self.create_smoke(x, y, count=3)  # Reduced from 5 to 3
+        self.create_smoke(x, y, count=5, color_base=(100, 100, 100))  # Reduced from 10 to 5
+        self.create_smoke(x, y, count=4, color_base=(50, 50, 50))  # Reduced from 8 to 4
 
-        # Add some fire/explosion particles
-        for _ in range(20):
+        # Add some fire/explosion particles - reduced count
+        for _ in range(10):  # Reduced from 20 to 10
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(80, 250) * scale_value(1.0)
             velocity = (math.cos(angle) * speed, math.sin(angle) * speed)
@@ -736,7 +735,6 @@ class ParticleSystem:
                     (255, 69, 0),  # Red-Orange
                     (255, 140, 0),  # Dark Orange
                     (255, 165, 0),  # Orange
-                    (255, 215, 0),  # Gold
                 ]
             )
 
@@ -749,13 +747,12 @@ class ParticleSystem:
                 velocity=velocity,
                 lifetime=random.uniform(0.3, 0.8),
                 shrink=True,
-                gravity=random.uniform(-50, 50)
-                * scale_value(1.0),  # Some rise, some fall
+                gravity=random.uniform(-50, 50) * scale_value(1.0),
             )
             self.add_particle(fire_particle)
 
-            # Add glow effect to some fire particles
-            if random.random() < 0.5:
+            # Add glow effect to fewer fire particles
+            if random.random() < 0.3:  # Reduced from 0.5 to 0.3
                 glow = Particle(
                     x=fire_particle.x,
                     y=fire_particle.y,
@@ -769,8 +766,8 @@ class ParticleSystem:
                 )
                 self.add_particle(glow)
 
-        # Create debris particles with enhanced physics
-        for _ in range(25):
+        # Create debris particles with enhanced physics - reduced count
+        for _ in range(12):  # Reduced from 25 to 12
             # Random velocity in all directions, but stronger than sparks
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(100, 400) * scale_value(1.0)
@@ -781,12 +778,8 @@ class ParticleSystem:
                 [
                     (100, 100, 100),  # Gray
                     (80, 80, 80),  # Dark Gray
-                    (120, 120, 120),  # Light Gray
                     (50, 50, 50),  # Very Dark Gray
-                    (150, 150, 150),  # Very Light Gray
                     (100, 0, 0),  # Dark Red (car parts)
-                    (0, 0, 100),  # Dark Blue (car parts)
-                    (50, 50, 0),  # Dark Yellow (car parts)
                 ]
             )
 
@@ -798,14 +791,13 @@ class ParticleSystem:
                 size=random.uniform(3, 12) * scale_value(1.0),
                 velocity=velocity,
                 lifetime=random.uniform(0.5, 2.0),
-                shrink=random.choice([True, False]),  # Some shrink, some don't
-                gravity=random.uniform(150, 300)
-                * scale_value(1.0),  # Debris falls down with variable gravity
+                shrink=True,  # Always shrink for consistency
+                gravity=random.uniform(150, 300) * scale_value(1.0),
             )
             self.add_particle(particle)
 
-        # Create a shockwave effect
-        for i in range(10):
+        # Create a shockwave effect - reduced count
+        for i in range(5):  # Reduced from 10 to 5
             size = (5 + i * 5) * scale_value(1.0)  # Increasing sizes
             alpha = 200 - i * 20  # Decreasing alpha
 
@@ -823,9 +815,9 @@ class ParticleSystem:
             self.add_particle(shockwave)
 
     def create_boost_trail(self, x: float, y: float) -> None:
-        """Create enhanced boost trail particles behind a car"""
-        # Create several particles at slightly different positions
-        for _ in range(5):  # Increased from 3 to 5 particles
+        """Create optimized boost trail particles behind a car"""
+        # Create fewer particles at slightly different positions
+        for _ in range(3):  # Reduced from 5 to 3 particles
             # Random position variation
             pos_x = x + random.uniform(-15, 15)
             pos_y = y + random.uniform(-8, 8)
@@ -833,15 +825,12 @@ class ParticleSystem:
             # Downward velocity (car is moving up the screen)
             velocity = (random.uniform(-8, 8), random.uniform(15, 40))
 
-            # Random color from boost colors with more variations
+            # Random color from boost colors with fewer variations
             color_choice = random.choice(
                 [
                     BOOST_COLOR,
-                    (255, 69, 0),  # Red-Orange
-                    (255, 215, 0),  # Gold
                     (255, 140, 0),  # Dark Orange
                     (255, 99, 71),  # Tomato
-                    (255, 127, 80),  # Coral
                 ]
             )
 
@@ -850,33 +839,32 @@ class ParticleSystem:
                 x=pos_x,
                 y=pos_y,
                 color=color_choice,
-                size=random.uniform(6, 12),  # Larger size
+                size=random.uniform(6, 10),  # Slightly smaller size range
                 velocity=velocity,
-                lifetime=random.uniform(0.4, 1.0),  # Longer lifetime
+                lifetime=random.uniform(0.4, 0.8),  # Slightly shorter lifetime
                 shrink=True,
                 gravity=random.uniform(-5, 5),  # Some drift up, some down
             )
             self.add_particle(particle)
 
-            # Add a glow effect for some particles
-            if random.random() < 0.6:  # 60% chance
+            # Add a glow effect for fewer particles
+            if random.random() < 0.4:  # Reduced from 0.6 to 0.4
                 glow = Particle(
                     x=pos_x,
                     y=pos_y,
                     color=color_choice,
-                    size=particle.size * 1.8,  # Larger glow
+                    size=particle.size * 1.5,  # Smaller glow (reduced from 1.8)
                     velocity=particle.velocity,
-                    lifetime=particle.lifetime
-                    * 0.7,  # Shorter lifetime than main particle
+                    lifetime=particle.lifetime * 0.7,
                     alpha=100,  # Semi-transparent
                     shrink=True,
                     gravity=particle.gravity,
                 )
                 self.add_particle(glow)
 
-        # Add some spark particles occasionally for a more dynamic effect
-        if random.random() < 0.3:  # 30% chance
-            self.create_spark(x, y, count=3, intensity=0.7)
+        # Add spark particles less frequently
+        if random.random() < 0.2:  # Reduced from 0.3 to 0.2
+            self.create_spark(x, y, count=2, intensity=0.7)  # Reduced from 3 to 2
 
     def create_tire_tracks(self, x: float, y: float, is_drifting: bool = False) -> None:
         """Create tire track marks on the road"""
@@ -1649,10 +1637,6 @@ class Car:
             self.x = LANE_POSITIONS[self.lane]
             # Add swerve effect - positive offset for right movement
             self.swerve_offset = self.width // 2
-            self.swerve_direction = 1
-            # Add tire smoke effect
-            self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
-            self.swerve_offset = -self.width // 2
             self.swerve_direction = 1
             # Add tire smoke effect
             self.tire_smoke_cooldown = 0.2  # Will create smoke for 0.2 seconds
@@ -2764,6 +2748,10 @@ class SettingsMenu:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return "EXIT"
+            # Handle music end event - play next song in playlist
+            elif event.type == pygame.USEREVENT + 1:
+                if hasattr(self, "_advance_playlist"):
+                    self._advance_playlist()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return "BACK"
@@ -3967,6 +3955,10 @@ class PromptSystem:
 
     def handle_input(self, event):
         """Handle input for dismissing prompts"""
+        # Don't consume scroll events
+        if event.type == pygame.MOUSEBUTTONDOWN and (event.button == 4 or event.button == 5):
+            return False
+            
         if event.type == pygame.KEYDOWN and event.key == pygame.K_x:
             if self.active_prompts:
                 # Start fade out for all prompts
@@ -4005,6 +3997,9 @@ class Game:
             )
             pygame.display.set_caption("Car Racing Game")
             self.clock = pygame.time.Clock()
+            
+            # Music player has been removed, we'll handle music directly
+            self.music_player = None
             
             # Track window state
             self.is_maximized = True
@@ -4471,19 +4466,23 @@ class Game:
             create_placeholder_sound(self.SOUND_SHIELD, duration=0.3, freq=700)
             create_placeholder_sound(self.SOUND_GAME_OVER, duration=1.0, freq=150)
 
-            # For background music, create a longer placeholder
-            if not os.path.exists(self.SOUND_BACKGROUND_MUSIC):
-                print(f"Creating placeholder music: {self.SOUND_BACKGROUND_MUSIC}")
-                # Create a simple text file as placeholder since MP3 creation is complex
-                with open(self.SOUND_BACKGROUND_MUSIC, "w") as f:
-                    f.write("Placeholder for background music")
+            # For background music, create a proper looping sound file
+            if not os.path.exists(self.SOUND_BACKGROUND_MUSIC) or os.path.getsize(self.SOUND_BACKGROUND_MUSIC) < 1000:
+                print(f"Creating proper background music: {self.SOUND_BACKGROUND_MUSIC}")
+                # Create a longer, more complex sound for background music
+                create_placeholder_sound(self.SOUND_BACKGROUND_MUSIC.replace('.mp3', '.wav'), duration=10.0, freq=220)
+                # Rename the file to .mp3 extension
+                if os.path.exists(self.SOUND_BACKGROUND_MUSIC.replace('.mp3', '.wav')):
+                    os.rename(self.SOUND_BACKGROUND_MUSIC.replace('.mp3', '.wav'), self.SOUND_BACKGROUND_MUSIC)
 
             # For menu music, create a placeholder for chill synth racing track
-            if not os.path.exists(self.SOUND_MENU_MUSIC):
-                print(f"Creating placeholder menu music: {self.SOUND_MENU_MUSIC}")
-                # Create a simple text file as placeholder since MP3 creation is complex
-                with open(self.SOUND_MENU_MUSIC, "w") as f:
-                    f.write("Placeholder for chill synth racing menu music")
+            if not os.path.exists(self.SOUND_MENU_MUSIC) or os.path.getsize(self.SOUND_MENU_MUSIC) < 1000:
+                print(f"Creating proper menu music: {self.SOUND_MENU_MUSIC}")
+                # Create a longer, more complex sound for menu music
+                create_placeholder_sound(self.SOUND_MENU_MUSIC.replace('.mp3', '.wav'), duration=8.0, freq=330)
+                # Rename the file to .mp3 extension
+                if os.path.exists(self.SOUND_MENU_MUSIC.replace('.mp3', '.wav')):
+                    os.rename(self.SOUND_MENU_MUSIC.replace('.mp3', '.wav'), self.SOUND_MENU_MUSIC)
 
             print("Placeholder sounds created successfully")
             return True
@@ -4491,6 +4490,86 @@ class Game:
             print(f"Error creating placeholder sounds: {e}")
             traceback.print_exc()
             return False
+            
+    def play_background_music(self):
+        """Play background music in a loop using track_01.mp3"""
+        try:
+            if sound_enabled and music_enabled and pygame.mixer.get_init():
+                # Use track_01.mp3 as the background music
+                track_01_path = "sounds/music/track_01.mp3"
+                
+                if os.path.exists(track_01_path) and os.path.getsize(track_01_path) > 1000:
+                    print("Starting background music with track_01.mp3...")
+                    pygame.mixer.music.load(track_01_path)
+                    pygame.mixer.music.set_volume(0.3)  # Set volume to 30%
+                    pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+                    print("Background music started with track_01.mp3")
+                    return True
+                else:
+                    # Fallback to default background music if track_01.mp3 is not available
+                    if os.path.exists(self.SOUND_BACKGROUND_MUSIC) and os.path.getsize(self.SOUND_BACKGROUND_MUSIC) > 1000:
+                        print("Track_01.mp3 not found, using fallback background music...")
+                        pygame.mixer.music.load(self.SOUND_BACKGROUND_MUSIC)
+                        pygame.mixer.music.set_volume(0.3)  # Set volume to 30%
+                        pygame.mixer.music.play(-1)  # -1 means loop indefinitely
+                        print("Background music started (fallback mode)")
+                        return True
+            return False
+        except Exception as e:
+            print(f"Error playing background music: {e}")
+            traceback.print_exc()
+            return False
+            
+    def stop_background_music(self):
+        """Stop the background music"""
+        try:
+            if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+                print("Background music stopped")
+        except Exception as e:
+            print(f"Error stopping background music: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _play_next_song(self):
+        """Play the next song in the playlist"""
+        try:
+            if not self.music_playlist:
+                return False
+                
+            # Load and play the current song
+            current_song = self.music_playlist[self.current_music_index]
+            print(f"Playing music: {current_song}")
+            
+            pygame.mixer.music.load(current_song)
+            pygame.mixer.music.set_volume(0.3)  # Set volume to 30%
+            pygame.mixer.music.play(0)  # Play once
+            
+            # Set up an event for when the song ends
+            pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)
+            
+            return True
+        except Exception as e:
+            print(f"Error playing song {self.current_music_index}: {e}")
+            self._advance_playlist()  # Try the next song
+            return False
+    
+    def _advance_playlist(self):
+        """Advance to the next song in the playlist"""
+        if not self.music_playlist:
+            return
+            
+        self.current_music_index = (self.current_music_index + 1) % len(self.music_playlist)
+        self._play_next_song()
+            
+    def stop_background_music(self):
+        """Stop the background music"""
+        try:
+            if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+                print("Background music stopped")
+        except Exception as e:
+            print(f"Error stopping background music: {e}")
 
     def generate_stars(self):
         """Generate random stars for the night sky"""
@@ -5497,6 +5576,630 @@ class Game:
 
             clock.tick(60)
 
+    def show_updates_menu(self, background_surface):
+        """Show the upcoming updates menu"""
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        
+        # Add transition animation
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "pixelate"
+            self.transition.start(direction="in", duration=0.5)
+        
+        # Font sizes - increased for better visibility
+        title_font_size = int(64 * (screen_height / 720))  # Increased from 48 to 64
+        heading_font_size = int(36 * (screen_height / 720))  # Increased from 32 to 36
+        text_font_size = int(26 * (screen_height / 720))  # Increased from 24 to 26
+        
+        # Enhanced colors for better visibility and attractiveness
+        title_color = (255, 215, 0)  # Gold
+        heading_colors = {
+            "🔄": (100, 200, 255),  # Blue for Gameplay
+            "💡": (255, 255, 100),  # Yellow for New Features
+            "🎨": (255, 150, 200),  # Pink for Visual
+            "🔊": (150, 255, 150),  # Green for Audio
+            "🛠️": (200, 200, 200),  # Silver for Technical
+            "💰": (255, 200, 100),  # Orange for Economy
+            "🎮": (200, 150, 255),  # Purple for Game Modes
+        }
+        text_color = (255, 255, 255)  # White
+        text_highlight_color = (255, 255, 150)  # Brighter light yellow for highlights
+        back_button_color = (60, 60, 80)
+        back_button_hover_color = (80, 80, 120)
+        
+        # Back button - more stylish with rounded corners
+        back_button_rect = pygame.Rect(
+            screen_width - 180, 
+            screen_height - 70, 
+            150, 
+            50
+        )
+        back_button_hover = False
+        
+        # Content
+        updates_content = [
+            {
+                "type": "heading",
+                "text": "🔄 Gameplay Updates",
+                "items": [
+                    "Fuel System – Introduce a fuel bar that depletes over time, refueled by collecting fuel cans.",
+                    "Weather Effects – Add rain, fog, or snow with associated physics (e.g., slippery roads).",
+                    "Traffic Patterns – Smarter AI for traffic cars with lane-changing and different speeds.",
+                    "Lane Merging or Road Splits – Add complexity by creating split paths or merging lanes.",
+                    "Police Chase Mode – A special mode where players must avoid cops while racing.",
+                    "Boss Levels – Introduce rare powerful vehicles to overtake or escape from.",
+                    "Story Mode – Add cutscenes or narrative elements between missions.",
+                    "Stunt Zones – Include ramps or destructible objects for extra points."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "💡 New Features",
+                "items": [
+                    "Achievements System – Unlock badges for skill-based milestones (e.g., \"Drive 1000km\", \"Perfect Combo x10\").",
+                    "Leaderboard Integration – Add local or online leaderboards for high scores and time attack.",
+                    "Multiplayer Support – Add local 2-player split-screen or online racing (if ambitious).",
+                    "Replay System – Let players watch their race with a camera switcher.",
+                    "In-Game Camera Switching – Toggle between top-down, angled, or chase-view cameras."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "🎨 Visual Enhancements",
+                "items": [
+                    "Dynamic Shadows & Lighting – Realistic shadow movement based on light sources.",
+                    "Car Damage Effects – Visual wear, sparks, smoke, or denting when hitting obstacles.",
+                    "Rain Particle Interaction – Water splashes on screen or tire effects during weather.",
+                    "Headlight Reflections – Reflective surfaces or headlight trails during night mode.",
+                    "Background Parallax Layers – Multi-depth layers (mountains, cities, etc.) to enhance movement feel."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "🔊 Audio Improvements",
+                "items": [
+                    "Engine Sound Variants – Change engine sounds by speed or car type.",
+                    "Voice Announcer – Add voice lines for events like \"Boost Ready!\" or \"Mission Complete!\".",
+                    "Dynamic Music System – Music intensity changes based on speed or danger level."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "🛠️ Technical & UX Updates",
+                "items": [
+                    "Save System – Save car unlocks, scores, and progress between sessions.",
+                    "Key Rebinding – Allow players to change control bindings in settings.",
+                    "Localization – Add support for multiple languages.",
+                    "Accessibility Options – Colorblind modes, font scaling, sound cues for events."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "💰 Economy & Progression",
+                "items": [
+                    "Upgrade System – Upgrade car attributes (speed, handling, fuel capacity, etc.) with coins.",
+                    "Daily/Weekly Challenges – Offer time-based goals with special rewards.",
+                    "Loot Boxes / Crates (non-pay) – Unlock random car skins or bonuses with collected tokens."
+                ]
+            },
+            {
+                "type": "heading",
+                "text": "🎮 Enhanced Game Modes",
+                "items": [
+                    "Endless Hard Mode – Increase traffic and speed gradually, no power-ups.",
+                    "Timed Boss Races – Face off against an elite AI racer in Time Attack format.",
+                    "Delivery Missions – Pick up and drop off \"packages\" within time limits."
+                ]
+            }
+        ]
+        
+        # Scrolling
+        if not hasattr(self, 'updates_menu_scroll_y'):
+            self.updates_menu_scroll_y = 0
+        scroll_y = self.updates_menu_scroll_y
+        max_scroll = 0  # Will be calculated when drawing
+        scroll_speed = 15  # Reduced scroll speed for smoother scrolling
+        
+        # Main updates menu loop
+        clock = pygame.time.Clock()
+        running = True
+        
+        # Animation variables
+        animation_time = 0
+        
+        while running:
+            try:
+                # Update animation time
+                animation_time += 0.01
+                
+                # Restore the background
+                self.screen.blit(background_surface, (0, 0))
+                
+                # Create a gradient overlay for more attractive background
+                overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+                for i in range(10):
+                    y_pos = i * (screen_height // 10)
+                    height = screen_height // 10
+                    alpha = 180 + int(20 * math.sin(animation_time + i * 0.2))  # Animated transparency
+                    color = (0, 0, 30 + i * 5, alpha)  # Gradient from dark blue to slightly lighter
+                    pygame.draw.rect(overlay, color, (0, y_pos, screen_width, height))
+                self.screen.blit(overlay, (0, 0))
+                
+                # Decorative elements removed as requested
+                
+                # Draw title with enhanced glow and animation effects
+                title_font = pygame.font.SysFont("Arial", title_font_size, bold=True)
+                
+                # Create a background banner for the title
+                banner_height = 100
+                banner_rect = pygame.Rect(0, 30, screen_width, banner_height)
+                banner_surface = pygame.Surface((screen_width, banner_height), pygame.SRCALPHA)
+                
+                # Create gradient banner with animation
+                for i in range(banner_height):
+                    alpha = 150 - int(i * 1.2)
+                    if alpha < 0:
+                        alpha = 0
+                    # Animated color with time
+                    r = 30 + int(20 * math.sin(animation_time * 0.5))
+                    g = 30 + int(10 * math.sin(animation_time * 0.7 + 2))
+                    b = 80 + int(30 * math.sin(animation_time * 0.3 + 4))
+                    pygame.draw.line(
+                        banner_surface, 
+                        (r, g, b, alpha),
+                        (0, i),
+                        (screen_width, i)
+                    )
+                
+                # Add animated particles to the banner
+                for i in range(20):
+                    particle_x = (screen_width * 0.5) + (screen_width * 0.4) * math.cos(animation_time * 0.2 + i * 0.3)
+                    particle_y = banner_height * 0.5 + (banner_height * 0.3) * math.sin(animation_time * 0.3 + i * 0.2)
+                    particle_size = 2 + int(2 * math.sin(animation_time + i))
+                    particle_alpha = 100 + int(100 * math.sin(animation_time * 0.5 + i * 0.7))
+                    pygame.draw.circle(
+                        banner_surface,
+                        (255, 255, 255, particle_alpha),
+                        (int(particle_x), int(particle_y)),
+                        particle_size
+                    )
+                
+                self.screen.blit(banner_surface, banner_rect)
+                
+                # Draw enhanced glow effect for title
+                glow_size = 5  # Increased from 3 to 5
+                glow_intensity = 1.5 + 0.5 * math.sin(animation_time * 2)  # Pulsating glow
+                for offset in range(glow_size, 0, -1):
+                    glow_alpha = int((120 - offset * 20) * glow_intensity)
+                    if glow_alpha > 255:
+                        glow_alpha = 255
+                    glow_color = (255, 215, 0, glow_alpha)
+                    glow_text = title_font.render("UPCOMING UPDATES", True, glow_color)  # Changed to all caps
+                    
+                    # More dramatic glow spread
+                    offsets = [
+                        (offset * 1.5, 0),
+                        (-offset * 1.5, 0),
+                        (0, offset * 1.5),
+                        (0, -offset * 1.5),
+                        (offset, offset),
+                        (-offset, -offset),
+                        (offset, -offset),
+                        (-offset, offset)
+                    ]
+                    
+                    for x_off, y_off in offsets:
+                        glow_rect = glow_text.get_rect(center=(screen_width // 2 + x_off, 63 + y_off))  # Adjusted from 70 to 63
+                        self.screen.blit(glow_text, glow_rect)
+                
+                # Draw main title with shadow for depth
+                shadow_text = title_font.render("UPCOMING UPDATES", True, (0, 0, 0, 180))
+                shadow_rect = shadow_text.get_rect(center=(screen_width // 2 + 3, 63))  # Adjusted from 73 to 63
+                self.screen.blit(shadow_text, shadow_rect)
+                
+                # Main title with slight animation
+                title_y_offset = math.sin(animation_time * 2) * 2
+                title_text = title_font.render("UPCOMING UPDATES", True, title_color)
+                title_rect = title_text.get_rect(center=(screen_width // 2, 60 + title_y_offset))  # Decreased Y position from 70 to 60
+                self.screen.blit(title_text, title_rect)
+                
+                # Add subtitle with increased vertical spacing
+                subtitle_font = pygame.font.SysFont("Arial", int(title_font_size * 0.4), italic=True)
+                subtitle_text = subtitle_font.render("Exciting new features coming soon!", True, (200, 200, 255))
+                subtitle_rect = subtitle_text.get_rect(center=(screen_width // 2, 130))  # Increased Y position from 110 to 130
+                self.screen.blit(subtitle_text, subtitle_rect)
+                
+                # Draw content with scrolling
+                heading_font = pygame.font.SysFont("Arial", heading_font_size, bold=True)
+                text_font = pygame.font.SysFont("Arial", text_font_size + 2)  # Slightly larger text
+                
+                y_pos = 180 + scroll_y  # Increased starting position from 160 to 180 to accommodate subtitle
+                content_height = 0
+                
+                # Content area with enhanced decorative border - better proportioned
+                content_area = pygame.Rect(180, 160, screen_width - 360, screen_height - 240)  # More balanced padding
+                
+                # Draw decorative content area background with animated border
+                border_color = (100, 150, 200, 100)
+                
+                # Create animated border
+                border_width = 3  # Increased from 2 to 3
+                border_pulse = (math.sin(animation_time * 2) + 1) / 2  # Value between 0 and 1
+                border_alpha = int(100 + 100 * border_pulse)  # Pulsing transparency
+                
+                # Draw outer glow for content area
+                for i in range(5, 0, -1):
+                    glow_alpha = int(20 * (6-i) * border_pulse)
+                    glow_rect = content_area.copy()
+                    glow_rect.inflate_ip(i*2, i*2)
+                    pygame.draw.rect(self.screen, (100, 150, 255, glow_alpha), glow_rect, border_radius=15)
+                
+                # Draw main border with animation
+                pygame.draw.rect(self.screen, (border_color[0], border_color[1], border_color[2], border_alpha), 
+                                content_area, border_width, border_radius=15)
+                
+                # Set clipping region to content area to ensure text stays within the box
+                # Make the clipping region slightly larger vertically to allow for partial text rendering
+                clip_rect = content_area.copy()
+                clip_rect.y -= 15  # Extend 15 pixels above
+                clip_rect.height += 30  # Extend 15 pixels below
+                original_clip = self.screen.get_clip()
+                self.screen.set_clip(clip_rect)
+                
+                # Add decorative corner accents
+                corner_size = 20
+                corner_positions = [
+                    (content_area.left, content_area.top),  # Top-left
+                    (content_area.right, content_area.top),  # Top-right
+                    (content_area.left, content_area.bottom),  # Bottom-left
+                    (content_area.right, content_area.bottom)  # Bottom-right
+                ]
+                
+                for x, y in corner_positions:
+                    # Draw corner accent with animation
+                    accent_color = (200, 220, 255, border_alpha)
+                    if (x == content_area.left and y == content_area.top) or (x == content_area.right and y == content_area.bottom):
+                        # Top-left and bottom-right corners
+                        pygame.draw.line(self.screen, accent_color, (x, y), (x + (corner_size if x == content_area.left else -corner_size), y), border_width)
+                        pygame.draw.line(self.screen, accent_color, (x, y), (x, y + (corner_size if y == content_area.top else -corner_size)), border_width)
+                    else:
+                        # Top-right and bottom-left corners
+                        pygame.draw.line(self.screen, accent_color, (x, y), (x + (corner_size if x == content_area.left else -corner_size), y), border_width)
+                        pygame.draw.line(self.screen, accent_color, (x, y), (x, y + (corner_size if y == content_area.top else -corner_size)), border_width)
+                
+                for section in updates_content:
+                    # Get the emoji from the section text to determine color
+                    emoji = section["text"].split()[0]
+                    heading_color = heading_colors.get(emoji, (135, 206, 250))  # Default to light sky blue
+                    
+                    # Draw section heading with enhanced background - SIMPLIFIED VERSION
+                    # Calculate available width for heading
+                    available_width = content_area.width - 100
+                    
+                    # Get the emoji from the section text
+                    emoji = section["text"].split()[0]
+                    heading_text_without_emoji = " ".join(section["text"].split()[1:])
+                    
+                    # Truncate heading text if needed
+                    test_heading = heading_font.render(heading_text_without_emoji, True, heading_color)
+                    if test_heading.get_width() > available_width:
+                        # Calculate how many characters we can fit
+                        char_ratio = available_width / test_heading.get_width()
+                        max_chars = max(5, int(len(heading_text_without_emoji) * char_ratio) - 3)
+                        heading_text_without_emoji = heading_text_without_emoji[:max_chars] + "..."
+                    
+                    # Render final heading with emoji
+                    heading_text = heading_font.render(emoji + " " + heading_text_without_emoji, True, heading_color)
+                    heading_rect = heading_text.get_rect(x=content_area.x + 60, y=y_pos)
+                    
+                    # Only draw if at least partially in view vertically
+                    # More lenient check - draw if any part of the heading is in the content area vertically
+                    if (y_pos + heading_rect.height > content_area.top - 10 and 
+                        y_pos < content_area.bottom + 10):
+                        # Draw heading background
+                        bg_rect = heading_rect.copy()
+                        bg_rect.inflate_ip(30, 15)
+                        bg_rect.x -= 15
+                        
+                        # Make sure background stays within content area
+                        if bg_rect.right > content_area.right - 20:
+                            bg_rect.width = content_area.right - bg_rect.x - 20
+                        
+                        # Create simple background for heading
+                        heading_bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+                        heading_bg.fill((heading_color[0], heading_color[1], heading_color[2], 50))
+                        
+                        # Draw heading background
+                        self.screen.blit(heading_bg, bg_rect)
+                        
+                        # Draw heading text with shadow for depth
+                        shadow_text = heading_font.render(emoji + " " + heading_text_without_emoji, True, (0, 0, 0, 150))
+                        shadow_rect = shadow_text.get_rect(x=heading_rect.x + 2, y=heading_rect.y + 2)
+                        self.screen.blit(shadow_text, shadow_rect)
+                        
+                        # Draw main heading text
+                        self.screen.blit(heading_text, heading_rect)
+                    
+                    y_pos += heading_rect.height + 25  # Increased spacing after headings from 20 to 25
+                    content_height += heading_rect.height + 25
+                    
+                    # Draw section items with enhanced styling
+                    for item_index, item in enumerate(section["items"]):
+                        # Wrap text to fit within content area width
+                        words = item.split()
+                        lines = []
+                        current_line = []
+                        
+                        # Split at the dash to highlight the feature name
+                        feature_name = ""
+                        feature_description = ""
+                        if "–" in item:
+                            parts = item.split("–", 1)
+                            feature_name = parts[0].strip()
+                            feature_description = "–" + parts[1].strip()
+                            
+                            # Add feature name as first line
+                            lines.append(feature_name)
+                            
+                            # Process description for wrapping
+                            words = feature_description.split()
+                        
+                        for word in words:
+                            test_line = " ".join(current_line + [word])
+                            test_width = text_font.size(test_line)[0]
+                            
+                            if test_width < screen_width - 500:  # More reasonable width limit
+                                current_line.append(word)
+                            else:
+                                lines.append(" ".join(current_line))
+                                current_line = [word]
+                        
+                        if current_line:
+                            lines.append(" ".join(current_line))
+                        
+                        # Create item background with subtle animation
+                        item_height = sum([text_font.size(line)[1] for line in lines]) + 8 * (len(lines) - 1) + 15
+                        item_rect = pygame.Rect(200, y_pos - 5, screen_width - 480, item_height)  # Better proportioned width
+                        
+                        # Only draw if at least partially in view
+                        if (item_rect.bottom > content_area.top - 15 and 
+                            item_rect.top < content_area.bottom + 15):
+                            # Alternate background colors for better readability
+                            if item_index % 2 == 0:
+                                # Create subtle animated background
+                                item_alpha = 10 + int(5 * math.sin(animation_time + item_index * 0.2))
+                                pygame.draw.rect(self.screen, (*heading_color, item_alpha), item_rect, border_radius=8)
+                                
+                                # Add subtle border
+                                border_alpha = 20 + int(10 * math.sin(animation_time * 1.5 + item_index * 0.3))
+                                pygame.draw.rect(self.screen, (*heading_color, border_alpha), item_rect, 1, border_radius=8)
+                        
+                        # Draw each line with improved styling - SIMPLIFIED VERSION
+                        first_line = True
+                        for line in lines:
+                            # Determine if this is the feature name (first line when split)
+                            is_feature_name = first_line and feature_name and line == feature_name
+                            
+                            # Choose color based on whether it's a feature name
+                            line_color = text_highlight_color if is_feature_name else text_color
+                            
+                            # Set position based on whether this is first line or continuation
+                            x_position = 200 if first_line else 220
+                            
+                            # HARD LIMIT: Truncate text to fixed maximum width
+                            # Calculate available width within content area
+                            available_width = content_area.right - x_position - 100
+                            
+                            # Render text to check its width
+                            test_surface = text_font.render(line, True, line_color)
+                            
+                            # If text is too wide, truncate it
+                            if test_surface.get_width() > available_width:
+                                # Always truncate if too wide
+                                char_ratio = available_width / test_surface.get_width()
+                                max_chars = max(5, int(len(line) * char_ratio) - 3)
+                                line = line[:max_chars] + "..."
+                            
+                            # Create final text surface
+                            text_surface = text_font.render(line, True, line_color)
+                            text_rect = text_surface.get_rect(x=x_position, y=y_pos)
+                            
+                            # Double-check that text is within content area horizontally
+                            if text_rect.right > content_area.right - 20:
+                                # If still too wide, skip this line
+                                continue
+                            
+                            # Only draw if at least partially in view vertically
+                            # More lenient check - draw if any part of the text is in the content area vertically
+                            if (y_pos + text_rect.height > content_area.top - 10 and 
+                                y_pos < content_area.bottom + 10):
+                                # Draw text with subtle shadow for feature names
+                                if is_feature_name:
+                                    shadow_surface = text_font.render(line, True, (0, 0, 0, 100))
+                                    shadow_rect = shadow_surface.get_rect(x=x_position + 1, y=y_pos + 1)
+                                    self.screen.blit(shadow_surface, shadow_rect)
+                                
+                                # Draw bullet point for first line
+                                if first_line:
+                                    bullet_color = heading_color
+                                    pygame.draw.circle(
+                                        self.screen, 
+                                        bullet_color,
+                                        (x_position - 10, y_pos + text_surface.get_height()//2),
+                                        4
+                                    )
+                                
+                                # Draw the text
+                                self.screen.blit(text_surface, text_rect)
+                            
+                            y_pos += text_rect.height + 10  # Increased line spacing
+                            content_height += text_rect.height + 10
+                            first_line = False
+                        
+                        y_pos += 20  # Increased spacing between items
+                        content_height += 15
+                    
+                    y_pos += 30  # Increased space between sections from 20 to 30
+                    content_height += 30
+                
+                # Calculate max scroll
+                max_scroll = min(0, screen_height - 180 - content_height)
+                
+                # Restore original clipping region before drawing back button and scrollbar
+                self.screen.set_clip(original_clip)
+                
+                # Draw back button with enhanced styling
+                back_color = back_button_hover_color if back_button_hover else back_button_color
+                
+                # Draw button with gradient and glow
+                button_surface = pygame.Surface((back_button_rect.width, back_button_rect.height), pygame.SRCALPHA)
+                for i in range(back_button_rect.height):
+                    # Create gradient effect
+                    factor = i / back_button_rect.height
+                    r = int(back_color[0] * (1 + factor * 0.3))
+                    g = int(back_color[1] * (1 + factor * 0.3))
+                    b = int(back_color[2] * (1 + factor * 0.3))
+                    if r > 255: r = 255
+                    if g > 255: g = 255
+                    if b > 255: b = 255
+                    pygame.draw.line(button_surface, (r, g, b), 
+                                    (0, i), (back_button_rect.width, i))
+                
+                # Add button to screen with rounded corners
+                button_rect = button_surface.get_rect(topleft=back_button_rect.topleft)
+                pygame.draw.rect(self.screen, (0, 0, 0, 0), back_button_rect, border_radius=10)  # Clear area
+                self.screen.blit(button_surface, button_rect)
+                
+                # Draw button border
+                pygame.draw.rect(self.screen, (255, 255, 255, 100), back_button_rect, 2, border_radius=10)
+                
+                # Draw button text with slight shadow for depth
+                back_font = pygame.font.SysFont("Arial", text_font_size, bold=True)
+                shadow_text = back_font.render("Back", True, (0, 0, 0))
+                shadow_rect = shadow_text.get_rect(center=(back_button_rect.center[0] + 2, back_button_rect.center[1] + 2))
+                self.screen.blit(shadow_text, shadow_rect)
+                
+                back_text = back_font.render("Back", True, (255, 255, 255))
+                back_text_rect = back_text.get_rect(center=back_button_rect.center)
+                self.screen.blit(back_text, back_text_rect)
+                
+                # Draw scroll indicators if needed
+                if max_scroll < 0:
+                    # Calculate pulse effect for scroll indicators
+                    pulse = (math.sin(animation_time * 3) + 1) / 2  # Value between 0 and 1
+                    arrow_alpha = int(150 + 105 * pulse)  # Pulsing transparency
+                    
+                    if scroll_y < 0:
+                        # Draw up arrow with glow effect
+                        arrow_color = (200, 220, 255, arrow_alpha)
+                        
+                        # Draw arrow glow
+                        for i in range(3, 0, -1):
+                            glow_alpha = int(50 * (4-i) * pulse)
+                            glow_color = (200, 220, 255, glow_alpha)
+                            pygame.draw.polygon(
+                                self.screen, glow_color, 
+                                [(screen_width - 30 - i, 120 + i),
+                                 (screen_width - 20, 100 - i * 2),
+                                 (screen_width - 10 + i, 120 + i)]
+                            )
+                        
+                        # Draw main arrow
+                        pygame.draw.polygon(
+                            self.screen, arrow_color, 
+                            [(screen_width - 30, 120),
+                             (screen_width - 20, 100),
+                             (screen_width - 10, 120)]
+                        )
+                    
+                    if scroll_y > max_scroll:
+                        # Draw down arrow with glow effect
+                        arrow_color = (200, 220, 255, arrow_alpha)
+                        
+                        # Draw arrow glow
+                        for i in range(3, 0, -1):
+                            glow_alpha = int(50 * (4-i) * pulse)
+                            glow_color = (200, 220, 255, glow_alpha)
+                            pygame.draw.polygon(
+                                self.screen, glow_color, 
+                                [(screen_width - 30 - i, screen_height - 120 - i),
+                                 (screen_width - 20, screen_height - 100 + i * 2),
+                                 (screen_width - 10 + i, screen_height - 120 - i)]
+                            )
+                        
+                        # Draw main arrow
+                        pygame.draw.polygon(
+                            self.screen, arrow_color, 
+                            [(screen_width - 30, screen_height - 120),
+                             (screen_width - 20, screen_height - 100),
+                             (screen_width - 10, screen_height - 120)]
+                        )
+                        
+                    # Add scroll bar indicator
+                    if content_height > 0:
+                        
+                        # Calculate scroll bar position and size
+                        viewport_height = screen_height - 180
+                        scroll_bar_height = max(30, viewport_height * (viewport_height / content_height))
+                        scroll_position = (abs(scroll_y) / (content_height - viewport_height)) if content_height > viewport_height else 0
+                        scroll_y_pos = 100 + scroll_position * (viewport_height - scroll_bar_height)
+                        
+                        # Draw scroll bar track
+                        track_rect = pygame.Rect(screen_width - 15, 100, 5, viewport_height)
+                        pygame.draw.rect(self.screen, (100, 100, 100, 50), track_rect, border_radius=2)
+                        
+                        # Draw scroll bar handle
+                        handle_rect = pygame.Rect(screen_width - 15, scroll_y_pos, 5, scroll_bar_height)
+                        pygame.draw.rect(self.screen, (200, 220, 255, 150), handle_rect, border_radius=2)
+                
+                # Update display
+                pygame.display.flip()
+                
+                # Handle events
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+                        
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_ESCAPE:
+                            running = False
+                        elif event.key == pygame.K_UP:
+                            scroll_y += scroll_speed
+                            if scroll_y > 0:
+                                scroll_y = 0
+                        elif event.key == pygame.K_DOWN:
+                            scroll_y -= scroll_speed
+                            if scroll_y < max_scroll:
+                                scroll_y = max_scroll
+                                
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if event.button == 1:  # Left click
+                            if back_button_rect.collidepoint(event.pos):
+                                running = False
+                        elif event.button == 4:  # Mouse wheel up
+                            scroll_y += scroll_speed
+                            if scroll_y > 0:
+                                scroll_y = 0
+                        elif event.button == 5:  # Mouse wheel down
+                            scroll_y -= scroll_speed
+                            if scroll_y < max_scroll:
+                                scroll_y = max_scroll
+                                
+                    elif event.type == pygame.MOUSEMOTION:
+                        back_button_hover = back_button_rect.collidepoint(event.pos)
+                
+                clock.tick(60)
+            except Exception as e:
+                print(f"Error in updates menu: {e}")
+                traceback.print_exc()
+                return
+                
+        # Save scroll position for next time
+        self.updates_menu_scroll_y = scroll_y
+        return
+    
     def show_settings_menu(self, background_surface):
         # Global variables that will be updated
         global SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_X, SCALE_Y, LANE_WIDTH, LANE_POSITIONS
@@ -5630,15 +6333,31 @@ class Game:
         return (r, g, b)
 
     def draw_road(self):
-        """Draw the road with enhanced animations and visual effects"""
+        """Draw the road with optimized animations and visual effects"""
         # Use cached background if available for better performance
-        if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.01:
+        if not hasattr(self, 'cached_background') or not hasattr(self, 'cached_day_phase') or abs(self.cached_day_phase - self.day_phase) > 0.05:  # Increased threshold from 0.01 to 0.05
             # Only recreate the background when the day phase changes significantly
             background = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-            for y in range(SCREEN_HEIGHT):
-                # Get color for this y position
-                color = self.get_sky_color(y)
-                pygame.draw.line(background, color, (0, y), (SCREEN_WIDTH, y))
+            
+            # Use a more efficient approach with fewer color calculations
+            top_color = self.get_sky_color(0)
+            bottom_color = self.get_sky_color(SCREEN_HEIGHT)
+            
+            # Draw gradient with fewer steps
+            steps = 10  # Reduced number of gradient steps
+            for i in range(steps):
+                y_start = i * SCREEN_HEIGHT // steps
+                y_end = (i + 1) * SCREEN_HEIGHT // steps
+                ratio = (i + 0.5) / steps
+                
+                # Interpolate color
+                r = int(top_color[0] * (1 - ratio) + bottom_color[0] * ratio)
+                g = int(top_color[1] * (1 - ratio) + bottom_color[1] * ratio)
+                b = int(top_color[2] * (1 - ratio) + bottom_color[2] * ratio)
+                color = (r, g, b)
+                
+                # Fill rectangle instead of drawing individual lines
+                pygame.draw.rect(background, color, (0, y_start, SCREEN_WIDTH, y_end - y_start))
             
             # Cache the background and day phase
             self.cached_background = background
@@ -5649,7 +6368,7 @@ class Game:
 
         self.screen.blit(background, (0, 0))
 
-        # Draw stars if it's night time (between 0.5 and 1.0)
+        # Draw stars if it's night time (between 0.5 and 1.0) - optimized
         if 0.4 < self.day_phase < 0.9:
             # Calculate star visibility (0 at day, 1 at full night)
             star_visibility = 0
@@ -5663,8 +6382,8 @@ class Game:
             # Only draw a subset of stars for better performance
             current_time = pygame.time.get_ticks() / 1000
             for i, star in enumerate(self.stars):
-                # Only draw every other star to improve performance
-                if i % 2 == 0:
+                # Only draw every third star to improve performance
+                if i % 3 == 0:  # Changed from every other star to every third star
                     # Calculate twinkle effect
                     twinkle = (
                         math.sin(
@@ -5683,8 +6402,8 @@ class Game:
                         int(255 * brightness),
                     )
                     
-                    # Draw star with glow effect
-                    if brightness > 0.7:  # Only add glow to brighter stars
+                    # Only draw glow for very bright stars to reduce rendering load
+                    if brightness > 0.85:  # Increased threshold from 0.7 to 0.85
                         glow_radius = star["size"] * 2
                         glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
                         glow_color = (255, 255, 255, int(50 * brightness))
@@ -5704,11 +6423,11 @@ class Game:
                         self.screen, color, (star["x"], star["y"]), star["size"]
                     )
                     
-                    # Occasionally add a shooting star
-                    if random.random() < 0.0001 and star_visibility > 0.8:  # Very rare
+                    # Shooting stars are very rare and expensive to render - reduce frequency
+                    if random.random() < 0.00005 and star_visibility > 0.9:  # Reduced from 0.0001 to 0.00005
                         self.create_shooting_star(star["x"], star["y"])
 
-        # Draw lane markings with metallic effect
+        # Draw lane markings with metallic effect - simplified
         for i in range(9):  # 8 lanes = 9 lines
             x = i * LANE_WIDTH
             pygame.draw.line(
@@ -5719,35 +6438,30 @@ class Game:
         # Use time-based animation for moving dashed lines
         line_offset = int((time.time() * self.speed * 20) % 80)  # Moving effect based on speed
         
-        for i in range(1, 8):  # 8 lanes = 7 middle lines
+        # Draw fewer dashed lines for better performance
+        for i in range(1, 8, 2):  # Draw every other middle line (was 1-8)
             x = i * LANE_WIDTH
             
-            # Draw dashed lines with animation
-            for y in range(-line_offset, SCREEN_HEIGHT, 80):
-                # Add a subtle glow effect to the lane markers
-                for offset in range(2, 0, -1):
-                    glow_color = (
-                        min(WHITE[0] - offset * 30, 255),
-                        min(WHITE[1] - offset * 30, 255),
-                        min(WHITE[2], 255),
-                        150 - offset * 50  # Add alpha for glow
-                    )
-                    
-                    # Create a surface for the glow
-                    glow_surface = pygame.Surface((6 + offset*4, 40 + offset*4), pygame.SRCALPHA)
-                    pygame.draw.rect(
-                        glow_surface,
-                        glow_color,
-                        (0, 0, 6 + offset*4, 40 + offset*4),
-                        0,
-                        3  # Rounded corners
-                    )
-                    
-                    # Draw the glow
-                    self.screen.blit(
-                        glow_surface,
-                        (x - (6 + offset*4)//2, y - offset*2)
-                    )
+            # Draw dashed lines with animation - fewer lines
+            for y in range(-line_offset, SCREEN_HEIGHT, 160):  # Increased spacing from 80 to 160
+                # Simplified glow effect - only one layer instead of multiple
+                glow_color = (255, 255, 255, 100)  # Simplified glow color
+                
+                # Create a surface for the glow
+                glow_surface = pygame.Surface((10, 44), pygame.SRCALPHA)
+                pygame.draw.rect(
+                    glow_surface,
+                    glow_color,
+                    (0, 0, 10, 44),
+                    0,
+                    3  # Rounded corners
+                )
+                
+                # Draw the glow
+                self.screen.blit(
+                    glow_surface,
+                    (x - 5, y)
+                )
                 
                 # Draw the main line
                 pygame.draw.rect(
@@ -5757,40 +6471,6 @@ class Game:
                     0,
                     2  # Rounded corners
                 )
-        
-        # Draw road texture/details
-        if hasattr(self, 'road_details_timer'):
-            self.road_details_timer -= 0.016  # Assuming ~60fps
-            if self.road_details_timer <= 0:
-                self.road_details_timer = random.uniform(0.5, 2.0)
-                # Add random road details (cracks, patches, etc.)
-                self.add_road_detail()
-        else:
-            self.road_details_timer = random.uniform(0.5, 2.0)
-            self.road_details = []
-        
-        # Draw existing road details
-        if hasattr(self, 'road_details'):
-            for detail in self.road_details[:]:
-                # Move detail based on game speed
-                detail['y'] += self.speed * 2
-                
-                # Draw the detail
-                if detail['type'] == 'crack':
-                    points = [(x + detail['x_offset'], y + detail['y']) for x, y in detail['points']]
-                    pygame.draw.lines(self.screen, detail['color'], False, points, detail['width'])
-                elif detail['type'] == 'patch':
-                    pygame.draw.rect(
-                        self.screen,
-                        detail['color'],
-                        (detail['x'], detail['y'], detail['width'], detail['height']),
-                        0,
-                        3  # Rounded corners
-                    )
-                
-                # Remove if off screen
-                if detail['y'] > SCREEN_HEIGHT + 50:
-                    self.road_details.remove(detail)
     
     def create_shooting_star(self, x, y):
         """Create a shooting star animation"""
@@ -6814,6 +7494,7 @@ class Game:
             ("GAME MODES", ELECTRIC_PURPLE, -2),
             ("NEW GAME", NEON_YELLOW, -1),
             ("GARAGE", NEON_GREEN, -5),  # Garage option with key code -5
+            ("UPDATES", NEON_GREEN, -6),  # New Updates option with key code -6
             ("OPTIONS", NEON_GREEN, -4),
             ("HIGH SCORES", NEON_GREEN, -3),
             ("EXIT", BRIGHT_RED, pygame.K_ESCAPE),
@@ -6922,6 +7603,22 @@ class Game:
                                     
                                     self.show_garage_menu(background_surface)
                                     # Continue showing menu after garage
+                                    continue
+                                elif key == -6:  # Updates
+                                    print("Opening updates")
+                                    # Create a background surface for the updates menu
+                                    background_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+                                    if has_background_image:
+                                        background_surface.blit(background_image, (0, 0))
+                                        # Add semi-transparent overlay
+                                        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                                        overlay.fill((0, 0, 0, 120))
+                                        background_surface.blit(overlay, (0, 0))
+                                    else:
+                                        background_surface.blit(background, (0, 0))
+                                    
+                                    self.show_updates_menu(background_surface)
+                                    # Continue showing menu after updates
                                     continue
                                 elif key == pygame.K_ESCAPE:
                                     # Stop menu music if playing
@@ -8159,6 +8856,9 @@ class Game:
             in_menu = True  # Start in menu first
             last_frame_time = time.time()
 
+            # Start background music
+            self.play_background_music()
+
             # Create initial fade-in transition for game start
             if hasattr(self, "transition"):
                 self.transition.transition_type = "fade"
@@ -8169,6 +8869,26 @@ class Game:
                 current_time = time.time()
                 dt = current_time - last_frame_time
                 last_frame_time = current_time
+                
+                # Handle all events in a single pass
+                events = pygame.event.get()
+                for event in events:
+                    # First priority: Handle music events
+                    if event.type == pygame.USEREVENT + 1:
+                        print("Music end event detected, restarting track_01.mp3")
+                        # Restart the background music
+                        self.play_background_music()
+                        continue
+                        
+                    # Second priority: Handle quit events
+                    if event.type == pygame.QUIT:
+                        # Stop background music
+                        self.stop_background_music()
+                        pygame.quit()
+                        sys.exit()
+                        
+                    # For all other events, re-post them for normal game handling
+                    pygame.event.post(event)
 
                 # Cap delta time to avoid large jumps
                 dt = min(dt, 0.1)
@@ -8267,8 +8987,8 @@ class Game:
                         in_menu = True
                         print("Game over, returning to menu")
 
-                # Maintain consistent frame rate
-                self.clock.tick(30)  # Reduced for better performance
+                # Maintain consistent frame rate - use target_fps variable
+                self.clock.tick(target_fps)  # Fixed at 30 FPS for better performance
         except Exception as e:
             print(f"Error in game loop: {e}")
             traceback.print_exc()
@@ -8286,6 +9006,10 @@ class Game:
                 and self.engine_playing
             ):
                 self.engine_channel.stop()
+                
+            # Stop background music if playing
+            self.stop_background_music()
+                
             pygame.quit()
             sys.exit()
 
@@ -8946,3 +9670,10 @@ def draw_sparkles(self, surface):
                 (int(sparkle["x"]), int(sparkle["y"])),
                 sparkle["size"] * twinkle
             )
+    def handle_music_end_event(self, event):
+        """Handle music end event to play the next song"""
+        if event.type == pygame.USEREVENT + 1:
+            if hasattr(self, "_advance_playlist"):
+                self._advance_playlist()
+                return True
+        return False

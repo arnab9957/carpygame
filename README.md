@@ -16,41 +16,19 @@ A fast-paced, arcade-style car racing game built with Pygame. Navigate through t
   - Collectible coins
   - AI-controlled traffic
 
-- **Visual Effects**:
-  - Particle systems for crashes, boosts, and effects
-  - Dynamic lighting based on time of day
-  - Smooth animations and transitions
-  - **NEW**: Animated option toggling in settings menu
-
-- **Customization**:
-  - Multiple car options with different stats
-  - Adjustable settings (sound, music, fullscreen)
-
-- **Game Features**:
-  - High score tracking with persistent storage
-  - In-game tutorials and prompts
-  - Responsive controls
-
 ## Requirements
 
 - Python 3.6+
 - Pygame 2.5.2+
-- typing 3.7.4.3+
 
 ## Installation
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/car-racing-game.git
-   cd car-racing-game
-   ```
-
-2. Install dependencies:
+1. Install dependencies:
    ```
    pip install -r requirements.txt
    ```
 
-3. Run the game:
+2. Run the game:
    ```
    python car_game.py
    ```
@@ -61,7 +39,6 @@ A fast-paced, arcade-style car racing game built with Pygame. Navigate through t
 - **Space**: Use boost (when boost meter is full)
 - **ESC/P**: Pause game
 - **F11**: Toggle fullscreen
-- **X**: Dismiss tutorial prompts
 
 ## Directory Structure
 
@@ -86,7 +63,3 @@ car_game_/
 - Developed by AKD
 - Built with Pygame (https://www.pygame.org)
 - Font: Pixelify Sans
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
