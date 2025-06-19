@@ -3655,6 +3655,16 @@ class TransitionEffect:
             self._draw_wipe("down")
         elif self.transition_type == "iris":
             self._draw_iris()
+        elif self.transition_type == "wipe_left":
+            self._draw_wipe("left")
+        elif self.transition_type == "wipe_right":
+            self._draw_wipe("right")
+        elif self.transition_type == "wipe_up":
+            self._draw_wipe("up")
+        elif self.transition_type == "wipe_down":
+            self._draw_wipe("down")
+        elif self.transition_type == "iris":
+            self._draw_iris()
         elif self.transition_type == "mosaic":
             self._draw_mosaic()
 
@@ -4057,6 +4067,88 @@ class TransitionEffect:
                         if tile_progress > 0:
                             tile_rect = pygame.Rect(x, y, tile_size, tile_size)
                             self.screen.blit(self.to_surface, (x, y), tile_rect)
+
+    def _draw_wipe(self, direction):
+        """Wipe transition effect"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        
+        if self.direction == "out":
+            # Wipe out effect
+            if direction == "left":
+                wipe_width = int(width * self.progress)
+                pygame.draw.rect(self.screen, self.transition_color, (0, 0, wipe_width, height))
+            elif direction == "right":
+                wipe_width = int(width * self.progress)
+                pygame.draw.rect(self.screen, self.transition_color, (width - wipe_width, 0, wipe_width, height))
+            elif direction == "up":
+                wipe_height = int(height * self.progress)
+                pygame.draw.rect(self.screen, self.transition_color, (0, 0, width, wipe_height))
+            elif direction == "down":
+                wipe_height = int(height * self.progress)
+                pygame.draw.rect(self.screen, self.transition_color, (0, height - wipe_height, width, wipe_height))
+        else:
+            # Wipe in effect
+            if self.to_surface:
+                self.screen.blit(self.to_surface, (0, 0))
+                
+                if direction == "left":
+                    wipe_width = int(width * (1 - self.progress))
+                    pygame.draw.rect(self.screen, self.transition_color, (0, 0, wipe_width, height))
+                elif direction == "right":
+                    wipe_width = int(width * (1 - self.progress))
+                    pygame.draw.rect(self.screen, self.transition_color, (width - wipe_width, 0, wipe_width, height))
+                elif direction == "up":
+                    wipe_height = int(height * (1 - self.progress))
+                    pygame.draw.rect(self.screen, self.transition_color, (0, 0, width, wipe_height))
+                elif direction == "down":
+                    wipe_height = int(height * (1 - self.progress))
+                    pygame.draw.rect(self.screen, self.transition_color, (0, height - wipe_height, width, wipe_height))
+            else:
+                # Fallback if no destination surface
+                self._draw_fade()
+
+    def _draw_iris(self):
+        """Iris transition effect (circular wipe)"""
+        width, height = self.screen.get_width(), self.screen.get_height()
+        center_x, center_y = width // 2, height // 2
+        max_radius = int(math.sqrt(width**2 + height**2) / 2)
+        
+        if self.direction == "out":
+            # Iris close
+            radius = int(max_radius * (1 - self.progress))
+            
+            # Draw original screen
+            self.screen.blit(self.from_surface, (0, 0))
+            
+            # Create mask with circle
+            mask = pygame.Surface((width, height), pygame.SRCALPHA)
+            mask.fill((0, 0, 0, 0))
+            pygame.draw.circle(mask, (0, 0, 0, 255), (center_x, center_y), radius)
+            
+            # Draw mask over screen
+            self.screen.blit(mask, (0, 0))
+        else:
+            # Iris open
+            radius = int(max_radius * self.progress)
+            
+            # Fill with transition color
+            self.screen.fill(self.transition_color)
+            
+            if self.to_surface:
+                # Create mask with circle
+                mask = pygame.Surface((width, height), pygame.SRCALPHA)
+                mask.fill((0, 0, 0, 0))
+                pygame.draw.circle(mask, (255, 255, 255, 255), (center_x, center_y), radius)
+                
+                # Create a temporary surface with the destination
+                temp = pygame.Surface((width, height), pygame.SRCALPHA)
+                temp.blit(self.to_surface, (0, 0))
+                
+                # Apply the mask
+                temp.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                
+                # Draw to screen
+                self.screen.blit(temp, (0, 0))
 
     def set_to_surface(self, surface):
         """Set the destination surface for transitions"""
@@ -5319,10 +5411,11 @@ class Game:
 
     def show_highscores(self, player_name=None):
         """Show the high scores screen with delete buttons and transition animation"""
-        # Add transition animation
+        # Add smooth entry transition animation
         if hasattr(self, "transition"):
-            self.transition.transition_type = "slide_up"
-            self.transition.start(direction="in", duration=0.4)
+            self.transition.transition_type = "wipe_down"  # Changed from slide_up to wipe_down
+            self.transition.transition_color = (40, 0, 20)  # Dark red color
+            self.transition.start(direction="in", duration=0.5)  # Slightly longer for better effect
             
         # Define colors
         WHITE = (255, 255, 255)
@@ -5501,11 +5594,10 @@ class Game:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
 
-            # Draw title with up and down animation
-            title_y_offset = math.sin(pygame.time.get_ticks() * 0.003) * 8  # Smooth up/down movement
+            # Draw title
             title_text = title_font.render("HIGH SCORES", True, NEON_YELLOW)
             title_rect = title_text.get_rect(
-                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 10 + title_y_offset)
+                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 10)
             )
             self.screen.blit(title_text, title_rect)
             
@@ -5656,6 +5748,11 @@ class Game:
 
             pygame.display.flip()
             self.clock.tick(30)
+        
+        # Add smooth exit transition when leaving high scores
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "slide_down"
+            self.transition.start(direction="out", duration=0.3)
 
     def show_pause_menu(self):
         # Pause engine sound if it's playing
@@ -6515,7 +6612,8 @@ class Game:
         
         # Add transition animation
         if hasattr(self, "transition"):
-            self.transition.transition_type = "pixelate"
+            self.transition.transition_type = "wipe_right"  # Changed from pixelate to wipe_right
+            self.transition.transition_color = (40, 40, 0)  # Dark yellow color
             self.transition.start(direction="in", duration=0.5)
             
         # Get current screen dimensions
@@ -7804,6 +7902,184 @@ class Game:
             print(f"Error in update method: {e}")
             traceback.print_exc()
 
+    def generate_menu_particles(self, count):
+        """Generate floating particles for menu background animation"""
+        self.menu_particles = []
+        for _ in range(count):
+            particle = {
+                'x': random.randint(0, SCREEN_WIDTH),
+                'y': random.randint(0, SCREEN_HEIGHT),
+                'vx': random.uniform(-20, 20),
+                'vy': random.uniform(-30, 30),
+                'size': random.randint(1, 4),
+                'color': random.choice([NEON_YELLOW, ELECTRIC_PURPLE, NEON_GREEN, SLEEK_SILVER]),
+                'alpha': random.randint(100, 255),
+                'pulse_speed': random.uniform(2, 5),
+                'pulse_offset': random.uniform(0, 6.28)  # 2*pi
+            }
+            self.menu_particles.append(particle)
+    
+    def generate_floating_elements(self, count):
+        """Generate floating geometric elements for menu decoration"""
+        self.floating_elements = []
+        shapes = ['circle', 'square', 'triangle', 'diamond']
+        for _ in range(count):
+            element = {
+                'x': random.randint(-50, SCREEN_WIDTH + 50),
+                'y': random.randint(-50, SCREEN_HEIGHT + 50),
+                'vx': random.uniform(-15, 15),
+                'vy': random.uniform(-15, 15),
+                'size': random.randint(8, 25),
+                'shape': random.choice(shapes),
+                'color': random.choice([NEON_YELLOW, ELECTRIC_PURPLE, NEON_GREEN, BRIGHT_RED]),
+                'rotation': 0,
+                'rotation_speed': random.uniform(-2, 2),
+                'alpha': random.randint(50, 150),
+                'scale_pulse': random.uniform(0.8, 1.2),
+                'scale_speed': random.uniform(1, 3)
+            }
+            self.floating_elements.append(element)
+    
+    def update_menu_particles(self, dt):
+        """Update particle positions and properties"""
+        for particle in self.menu_particles:
+            # Update position
+            particle['x'] += particle['vx'] * dt
+            particle['y'] += particle['vy'] * dt
+            
+            # Wrap around screen edges
+            if particle['x'] < -10:
+                particle['x'] = SCREEN_WIDTH + 10
+            elif particle['x'] > SCREEN_WIDTH + 10:
+                particle['x'] = -10
+            if particle['y'] < -10:
+                particle['y'] = SCREEN_HEIGHT + 10
+            elif particle['y'] > SCREEN_HEIGHT + 10:
+                particle['y'] = -10
+            
+            # Update pulsing alpha
+            particle['pulse_offset'] += particle['pulse_speed'] * dt
+            pulse_factor = (math.sin(particle['pulse_offset']) + 1) / 2
+            particle['current_alpha'] = int(particle['alpha'] * (0.3 + 0.7 * pulse_factor))
+    
+    def update_floating_elements(self, dt):
+        """Update floating element positions and animations"""
+        for element in self.floating_elements:
+            # Update position
+            element['x'] += element['vx'] * dt
+            element['y'] += element['vy'] * dt
+            
+            # Wrap around screen edges
+            if element['x'] < -element['size']:
+                element['x'] = SCREEN_WIDTH + element['size']
+            elif element['x'] > SCREEN_WIDTH + element['size']:
+                element['x'] = -element['size']
+            if element['y'] < -element['size']:
+                element['y'] = SCREEN_HEIGHT + element['size']
+            elif element['y'] > SCREEN_HEIGHT + element['size']:
+                element['y'] = -element['size']
+            
+            # Update rotation
+            element['rotation'] += element['rotation_speed'] * dt
+            
+            # Update scale pulsing
+            element['scale_pulse'] += element['scale_speed'] * dt
+            element['current_scale'] = 1.0 + 0.2 * math.sin(element['scale_pulse'])
+    
+    def draw_menu_particles(self):
+        """Draw animated particles on the menu background"""
+        for particle in self.menu_particles:
+            color = (*particle['color'], particle['current_alpha'])
+            # Create a surface with per-pixel alpha
+            particle_surface = pygame.Surface((particle['size'] * 2, particle['size'] * 2), pygame.SRCALPHA)
+            pygame.draw.circle(particle_surface, color, (particle['size'], particle['size']), particle['size'])
+            self.screen.blit(particle_surface, (particle['x'] - particle['size'], particle['y'] - particle['size']))
+    
+    def draw_floating_elements(self):
+        """Draw animated floating geometric elements"""
+        for element in self.floating_elements:
+            size = int(element['size'] * element['current_scale'])
+            color = (*element['color'], element['alpha'])
+            
+            # Create surface for the element
+            element_surface = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+            center = (size, size)
+            
+            if element['shape'] == 'circle':
+                pygame.draw.circle(element_surface, color, center, size, 2)
+            elif element['shape'] == 'square':
+                rect = pygame.Rect(center[0] - size//2, center[1] - size//2, size, size)
+                pygame.draw.rect(element_surface, color, rect, 2)
+            elif element['shape'] == 'triangle':
+                points = [
+                    (center[0], center[1] - size),
+                    (center[0] - size, center[1] + size//2),
+                    (center[0] + size, center[1] + size//2)
+                ]
+                pygame.draw.polygon(element_surface, color, points, 2)
+            elif element['shape'] == 'diamond':
+                points = [
+                    (center[0], center[1] - size),
+                    (center[0] + size, center[1]),
+                    (center[0], center[1] + size),
+                    (center[0] - size, center[1])
+                ]
+                pygame.draw.polygon(element_surface, color, points, 2)
+            
+            # Rotate the element if needed
+            if element['rotation'] != 0:
+                element_surface = pygame.transform.rotate(element_surface, math.degrees(element['rotation']))
+            
+            # Blit to screen
+            rect = element_surface.get_rect(center=(element['x'], element['y']))
+            self.screen.blit(element_surface, rect)
+
+    def generate_menu_particles(self, count):
+        """Generate floating particles for menu background animation"""
+        self.menu_particles = []
+        for _ in range(count):
+            particle = {
+                'x': random.randint(0, SCREEN_WIDTH),
+                'y': random.randint(0, SCREEN_HEIGHT),
+                'vx': random.uniform(-20, 20),
+                'vy': random.uniform(-30, 30),
+                'size': random.randint(1, 4),
+                'color': random.choice([NEON_YELLOW, ELECTRIC_PURPLE, NEON_GREEN, SLEEK_SILVER]),
+                'alpha': random.randint(100, 255),
+                'pulse_speed': random.uniform(2, 5),
+                'pulse_offset': random.uniform(0, 6.28)
+            }
+            self.menu_particles.append(particle)
+    
+    def update_menu_particles(self, dt):
+        """Update particle positions and properties"""
+        for particle in self.menu_particles:
+            particle['x'] += particle['vx'] * dt
+            particle['y'] += particle['vy'] * dt
+            
+            # Wrap around screen edges
+            if particle['x'] < -10:
+                particle['x'] = SCREEN_WIDTH + 10
+            elif particle['x'] > SCREEN_WIDTH + 10:
+                particle['x'] = -10
+            if particle['y'] < -10:
+                particle['y'] = SCREEN_HEIGHT + 10
+            elif particle['y'] > SCREEN_HEIGHT + 10:
+                particle['y'] = -10
+            
+            # Update pulsing alpha
+            particle['pulse_offset'] += particle['pulse_speed'] * dt
+            pulse_factor = (math.sin(particle['pulse_offset']) + 1) / 2
+            particle['current_alpha'] = int(particle['alpha'] * (0.3 + 0.7 * pulse_factor))
+    
+    def draw_menu_particles(self):
+        """Draw animated particles on the menu background"""
+        for particle in self.menu_particles:
+            color = (*particle['color'], particle['current_alpha'])
+            particle_surface = pygame.Surface((particle['size'] * 2, particle['size'] * 2), pygame.SRCALPHA)
+            pygame.draw.circle(particle_surface, color, (particle['size'], particle['size']), particle['size'])
+            self.screen.blit(particle_surface, (particle['x'] - particle['size'], particle['y'] - particle['size']))
+
     def show_menu(self):
         print("Opening main menu...")
 
@@ -7828,6 +8104,28 @@ class Game:
                 print("Menu music started")
             except Exception as e:
                 print(f"Error playing menu music: {e}")
+
+        # Enhanced animation variables
+        self.menu_selection_animation = 0.0
+        self.menu_selection_target = 0
+        self.menu_selection_speed = 8.0
+        
+        # Title animation variables
+        self.title_bounce_time = 0.0
+        self.title_bounce_amplitude = 10.0
+        self.title_bounce_speed = 2.0
+        
+        # Menu item animation variables
+        self.menu_items_slide_progress = 0.0
+        self.menu_items_slide_speed = 3.0
+        
+        # Background animation variables
+        self.background_pulse_time = 0.0
+        self.background_pulse_speed = 1.5
+        
+        # Particle system for menu background
+        self.menu_particles = []
+        self.generate_menu_particles(30)
 
         # Load background image
         try:
@@ -7873,6 +8171,10 @@ class Game:
         title_font = get_font(min(72, SCREEN_HEIGHT // 12), bold=True)  # Responsive title font
         menu_font = get_font(min(48, SCREEN_HEIGHT // 18))  # Responsive menu font
 
+        # Draw title
+        title_text = title_font.render("CAR RACING", True, NEON_YELLOW)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6))
+
         # Create menu options
         options = [
             ("GAME MODES", ELECTRIC_PURPLE, -2),
@@ -7895,9 +8197,18 @@ class Game:
             # Get mouse position
             mouse_pos = pygame.mouse.get_pos()
             
-            # Update sparkles
+            # Update animations
             dt = clock.tick(60) / 1000.0  # Convert milliseconds to seconds
+            
+            # Update animation timers
+            self.title_bounce_time += dt
+            self.menu_items_slide_progress = min(1.0, self.menu_items_slide_progress + self.menu_items_slide_speed * dt)
+            self.background_pulse_time += dt
+            
+            # Update particle systems
             self.update_sparkles(dt)
+            self.update_menu_particles(dt)
+            self.update_floating_elements(dt)
 
             # Handle events
             for event in pygame.event.get():
@@ -7948,14 +8259,246 @@ class Game:
                                     return True
                                 elif key == -2:  # Game Modes
                                     print("Opening game modes menu")
+                                    # Enhanced transition for game modes
+                                    if hasattr(self, "transition"):
+                                        self.transition.transition_type = "iris"
+                                        self.transition.transition_color = (0, 20, 40)  # Dark blue
+                                        self.transition.start(direction="out", duration=0.6)
+                                        
+                                        # Wait for transition to complete
+                                        transition_start = time.time()
+                                        while self.transition.running and time.time() - transition_start < 0.7:
+                                            self.transition.update()
+                                            self.screen.blit(background_image if has_background_image else background, (0, 0))
+                                            
+                                            # Draw menu items
+                                            for i, (text, color, key_code) in enumerate(options):
+                                                font = get_font(min(32, SCREEN_HEIGHT // 25), bold=True)
+                                                if i == selected_option:
+                                                    # Highlight selected option
+                                                    text_surface = font.render(text, True, NEON_YELLOW)
+                                                else:
+                                                    text_surface = font.render(text, True, color)
+                                                
+                                                text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + i * 60 - 60))
+                                                self.screen.blit(text_surface, text_rect)
+                                            
+                                            self.transition.draw()
+                                            pygame.display.flip()
+                                            clock.tick(60)
+                                    
                                     return self.show_game_mode_menu()
                                 elif key == -3:  # High Scores
                                     print("Opening high scores")
+                                    # Enhanced transition for high scores
+                                    if hasattr(self, "transition"):
+                                        self.transition.transition_type = "wipe_down"
+                                        self.transition.transition_color = (40, 0, 20)  # Dark red
+                                        self.transition.start(direction="out", duration=0.5)
+                                        
+                                        # Wait for transition
+                                        transition_start = time.time()
+                                        while self.transition.running and time.time() - transition_start < 0.6:
+                                            self.transition.update()
+                                            self.screen.blit(background_image if has_background_image else background, (0, 0))
+                                            
+                                            # Draw menu items
+                                            for i, (text, color, key_code) in enumerate(options):
+                                                font = get_font(min(32, SCREEN_HEIGHT // 25), bold=True)
+                                                text_surface = font.render(text, True, color)
+                                                text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + i * 60 - 60))
+                                                self.screen.blit(text_surface, text_rect)
+                                            
+                                            self.transition.draw()
+                                            pygame.display.flip()
+                                            clock.tick(60)
+                                    
                                     self.show_highscores()
                                     # Continue showing menu after high scores
                                     continue
                                 elif key == -4:  # Options
                                     print("Opening options menu")
+                                    # Enhanced transition for options
+                                    if hasattr(self, "transition"):
+                                        self.transition.transition_type = "blinds"
+                                        self.transition.transition_color = (20, 40, 0)  # Dark green
+                                        self.transition.start(direction="out", duration=0.5)
+                                        
+                                        # Wait for transition
+                                        transition_start = time.time()
+                                        while self.transition.running and time.time() - transition_start < 0.6:
+                                            self.transition.update()
+                                            self.screen.blit(background_image if has_background_image else background, (0, 0))
+                                            
+                                            # Draw menu items
+                                            for i, (text, color, key_code) in enumerate(options):
+                                                font = get_font(min(32, SCREEN_HEIGHT // 25), bold=True)
+                                                text_surface = font.render(text, True, color)
+                                                text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + i * 60 - 60))
+                                                self.screen.blit(text_surface, text_rect)
+                                            
+                                            self.transition.draw()
+                                            pygame.display.flip()
+                                            clock.tick(60)
+                                    
+                                    # Create a background surface for the settings menu
+                                    # Instead of using a copy of the current screen, we'll redraw the menu
+                                    # when we return from the settings menu
+                                    background_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+                                    if has_background_image:
+                                        background_surface.blit(background_image, (0, 0))
+                                        # Add overlay
+                                        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                                        overlay.fill((0, 0, 0, 120))
+                                        background_surface.blit(overlay, (0, 0))
+                                    else:
+                                        background_surface.blit(background, (0, 0))
+                                    
+                                    self.show_settings_menu(background_surface)
+                                    # Continue showing menu after options
+                                    continue
+                                elif key == -5:  # Garage
+                                    print("Opening garage")
+                                    # Create a background surface for the garage menu
+                                    background_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+                                    if has_background_image:
+                                        background_surface.blit(background_image, (0, 0))
+                                        # Add overlay
+                                        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                                        overlay.fill((0, 0, 0, 120))
+                                        background_surface.blit(overlay, (0, 0))
+                                    else:
+                                        background_surface.blit(background, (0, 0))
+                                    
+                                    self.show_garage_menu(background_surface)
+                                    # Continue showing menu after garage
+                                    continue
+                                elif key == -6:  # Updates
+                                    print("Opening updates")
+                                    # Create a background surface for the updates menu
+                                    background_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+                                    if has_background_image:
+                                        background_surface.blit(background_image, (0, 0))
+                                        # Add overlay
+                                        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                                        overlay.fill((0, 0, 0, 120))
+                                        background_surface.blit(overlay, (0, 0))
+                                    else:
+                                        background_surface.blit(background, (0, 0))
+                                    
+                                    self.show_updates_menu(background_surface)
+                                    # Continue showing menu after updates
+                                    continue
+                                elif key == pygame.K_ESCAPE:
+                                    # Stop menu music if playing
+                                    if (
+                                        sound_enabled
+                                        and hasattr(self, "menu_music_channel")
+                                        and self.menu_music_playing
+                                    ):
+                                        self.menu_music_channel.stop()
+                                        self.menu_music_playing = False
+                                    return False
+
+            # === ENHANCED DRAWING SECTION ===
+            
+            # Draw animated background
+            if has_background_image:
+                # Use the loaded image as background
+                current_width = self.screen.get_width()
+                current_height = self.screen.get_height()
+                
+                if background_image.get_width() != current_width or background_image.get_height() != current_height:
+                    background_image = pygame.transform.scale(background_image, (current_width, current_height))
+                
+                self.screen.blit(background_image, (0, 0))
+                
+                # Add animated pulsing overlay
+                pulse_intensity = (math.sin(self.background_pulse_time * self.background_pulse_speed) + 1) * 0.5
+                overlay_alpha = int(80 + 40 * pulse_intensity)  # Pulse between 80-120 alpha
+                overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, overlay_alpha))
+                self.screen.blit(overlay, (0, 0))
+            else:
+                # Use animated gradient background
+                self.screen.blit(background, (0, 0))
+                
+                # Add animated color waves
+                wave_time = self.background_pulse_time * 2
+                for y in range(0, SCREEN_HEIGHT, 4):
+                    wave_intensity = (math.sin(wave_time + y * 0.01) + 1) * 0.5
+                    wave_color = (
+                        int(DEEP_BLUE[0] + 20 * wave_intensity),
+                        int(DEEP_BLUE[1] + 30 * wave_intensity),
+                        int(DEEP_BLUE[2] + 40 * wave_intensity)
+                    )
+                    pygame.draw.line(self.screen, wave_color, (0, y), (SCREEN_WIDTH, y), 2)
+            
+            # Draw floating elements and particles
+            self.draw_floating_elements()
+            self.draw_menu_particles()
+            self.draw_sparkles(self.screen)
+            
+            # Draw animated title with bounce effect
+            bounce_offset = math.sin(self.title_bounce_time * self.title_bounce_speed) * self.title_bounce_amplitude
+            animated_title_rect = title_rect.copy()
+            animated_title_rect.y += int(bounce_offset)
+            
+            # Add title glow effect
+            glow_colors = [NEON_YELLOW, ELECTRIC_PURPLE, NEON_GREEN]
+            glow_color = glow_colors[int(self.title_bounce_time) % len(glow_colors)]
+            
+            # Draw multiple title layers for glow effect
+            for i in range(5, 0, -1):
+                glow_alpha = int(50 * (6 - i) / 5)
+                glow_surface = pygame.Surface(title_text.get_size(), pygame.SRCALPHA)
+                glow_surface.fill((*glow_color, glow_alpha))
+                glow_rect = animated_title_rect.copy()
+                glow_rect.x += i
+                glow_rect.y += i
+                self.screen.blit(glow_surface, glow_rect, special_flags=pygame.BLEND_ADD)
+            
+            # Draw main title
+            self.screen.blit(title_text, animated_title_rect)
+
+            # Draw total coins counter in upper right corner
+            coin_font = get_font(min(32, SCREEN_HEIGHT // 28))  # Responsive coin font
+            coin_display_text = f"💰 {total_coins:,}"  # Format with commas for large numbers
+            coin_text_surface = coin_font.render(coin_display_text, True, COIN_COLOR)
+            
+            # Position in upper right corner with more padding to avoid cutting
+            coin_rect = coin_text_surface.get_rect()
+            coin_rect.topright = (SCREEN_WIDTH - 30, 40)  # Increased padding: 30px from right, 40px from top
+                                    continue
+                                elif key == -4:  # Options
+                                    print("Opening options menu")
+                                    # Enhanced transition for options
+                                    if hasattr(self, "transition"):
+                                        self.transition.transition_type = "wipe_right"
+                                        self.transition.transition_color = (40, 40, 0)  # Dark yellow
+                                        self.transition.start(direction="out", duration=0.5)
+                                        
+                                        # Wait for transition
+                                        transition_start = time.time()
+                                        while self.transition.running and time.time() - transition_start < 0.6:
+                                            self.transition.update()
+                                            self.screen.blit(background_image if has_background_image else background, (0, 0))
+                                            
+                                            # Draw menu items
+                                            for i, (text, color, key_code) in enumerate(options):
+                                                font = get_font(min(32, SCREEN_HEIGHT // 25), bold=True)
+                                                if i == selected_option:
+                                                    text_surface = font.render(text, True, NEON_YELLOW)
+                                                else:
+                                                    text_surface = font.render(text, True, color)
+                                                
+                                                text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + i * 60 - 60))
+                                                self.screen.blit(text_surface, text_rect)
+                                            
+                                            self.transition.draw()
+                                            pygame.display.flip()
+                                            clock.tick(60)
+                                    
                                     # Create a background surface for the settings menu
                                     # Instead of using a copy of the current screen, we'll redraw the menu
                                     # when we return from the settings menu
@@ -8015,64 +8558,52 @@ class Game:
                                         self.menu_music_playing = False
                                     return False
 
-            # Draw background
+            # Draw animated background with particles
             if has_background_image:
-                # Use the loaded image as background
-                # Get current screen dimensions to ensure proper scaling
                 current_width = self.screen.get_width()
                 current_height = self.screen.get_height()
                 
-                # Check if the background image needs to be rescaled
                 if background_image.get_width() != current_width or background_image.get_height() != current_height:
                     background_image = pygame.transform.scale(background_image, (current_width, current_height))
-                    print(f"Background image rescaled to {current_width}x{current_height}")
                 
                 self.screen.blit(background_image, (0, 0))
                 
-                # Add a semi-transparent overlay to make text more readable
+                # Add animated pulsing overlay
+                pulse_intensity = (math.sin(self.background_pulse_time * self.background_pulse_speed) + 1) * 0.5
+                overlay_alpha = int(80 + 40 * pulse_intensity)
                 overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 120))  # Semi-transparent black
+                overlay.fill((0, 0, 0, overlay_alpha))
                 self.screen.blit(overlay, (0, 0))
                 
-                # Draw sparkles animation
-                self.update_sparkles(0.016)  # Use a fixed time step for consistent animation
+                # Draw sparkles and particles
                 self.draw_sparkles(self.screen)
+                self.draw_menu_particles()
             else:
-                # Use the gradient background
+                # Use animated gradient background
                 self.screen.blit(background, (0, 0))
-
-            # Calculate title animation (must be inside the loop for continuous animation)
-            title_y_offset = math.sin(pygame.time.get_ticks() * 0.002) * 15  # More noticeable up/down movement
+                self.draw_menu_particles()
             
-            # Add subtle color pulsing effect
-            pulse = (math.sin(pygame.time.get_ticks() * 0.003) + 1) * 0.5  # 0 to 1
-            title_color = (
-                int(255 * (0.7 + 0.3 * pulse)),  # More noticeable color variation
-                int(255 * (0.7 + 0.3 * pulse)),  # More noticeable color variation
-                int(80 * pulse)  # More blue tint variation
-            )
+            # Draw animated title with bounce effect
+            bounce_offset = math.sin(self.title_bounce_time * self.title_bounce_speed) * self.title_bounce_amplitude
+            animated_title_rect = title_rect.copy()
+            animated_title_rect.y += int(bounce_offset)
             
-            title_text = title_font.render("CAR RACING", True, title_color)
-            title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6 + title_y_offset))
-
-            # Draw title with glow effect
-            # First draw glow layers
-            glow_intensity = (math.sin(pygame.time.get_ticks() * 0.004) + 1) * 0.5 + 0.3  # 0.3 to 1.3
-            for offset in range(4, 0, -1):
-                glow_color = (
-                    int(title_color[0] * 0.8),
-                    int(title_color[1] * 0.8), 
-                    int(title_color[2] + 100)
-                )
-                glow_text = title_font.render("CAR RACING", True, glow_color)
-                glow_rect = glow_text.get_rect(center=(title_rect.centerx + offset, title_rect.centery + offset))
-                glow_surface = pygame.Surface(glow_text.get_size(), pygame.SRCALPHA)
-                glow_surface.blit(glow_text, (0, 0))
-                glow_surface.set_alpha(int(30 * glow_intensity / offset))
-                self.screen.blit(glow_surface, glow_rect)
+            # Add title glow effect that changes color
+            glow_colors = [NEON_YELLOW, ELECTRIC_PURPLE, NEON_GREEN]
+            glow_color = glow_colors[int(self.title_bounce_time) % len(glow_colors)]
             
-            # Then draw the main title
-            self.screen.blit(title_text, title_rect)
+            # Draw multiple title layers for glow effect
+            for i in range(3, 0, -1):
+                glow_alpha = int(80 * (4 - i) / 3)
+                glow_surface = pygame.Surface(title_text.get_size(), pygame.SRCALPHA)
+                glow_surface.fill((*glow_color, glow_alpha))
+                glow_rect = animated_title_rect.copy()
+                glow_rect.x += i * 2
+                glow_rect.y += i * 2
+                self.screen.blit(glow_surface, glow_rect, special_flags=pygame.BLEND_ADD)
+            
+            # Draw main title
+            self.screen.blit(title_text, animated_title_rect)
 
             # Draw total coins counter in upper right corner
             coin_font = get_font(min(32, SCREEN_HEIGHT // 28))  # Responsive coin font
@@ -8237,14 +8768,14 @@ class Game:
                 menu_start_y = SCREEN_HEIGHT // 2 + 20  # Added 20px more space
 
             # Ensure menu doesn't go off screen - adjust spacing if needed
-            menu_items_count = len(options)
+            options_count = len(options)
             menu_spacing = 60  # Reduced from 65 to ensure better fit
-            total_menu_height = menu_items_count * menu_spacing
+            total_menu_height = options_count * menu_spacing
             
             if menu_start_y + total_menu_height > SCREEN_HEIGHT - 80:  # Increased bottom margin
                 # Reduce spacing if menu would go off screen
                 available_height = SCREEN_HEIGHT - 80 - menu_start_y
-                menu_spacing = max(40, available_height // menu_items_count)  # Minimum 40px spacing
+                menu_spacing = max(40, available_height // options_count)  # Minimum 40px spacing
 
             for i, (text, color, key) in enumerate(options):
                 option_text = menu_font.render(text, True, color)
@@ -8590,7 +9121,8 @@ class Game:
         """Show the garage menu for car selection and customization with transition animation"""
         # Add transition animation
         if hasattr(self, "transition"):
-            self.transition.transition_type = "zoom"
+            self.transition.transition_type = "wipe_left"  # Changed from zoom to wipe_left
+            self.transition.transition_color = (40, 20, 0)  # Dark orange color
             self.transition.start(direction="in", duration=0.5)
             
         # Define colors
@@ -9010,10 +9542,9 @@ class Game:
             self.update_sparkles(0.016)  # Use a fixed time step for consistent animation
             self.draw_sparkles(self.screen)
             
-            # Draw title with up and down animation
-            title_y_offset = math.sin(pygame.time.get_ticks() * 0.003) * 8  # Smooth up/down movement
+            # Draw title
             title_text = title_font.render("GARAGE", True, NEON_YELLOW)
-            title_rect = title_text.get_rect(center=(screen_width // 2, screen_height // 6 + title_y_offset))
+            title_rect = title_text.get_rect(center=(screen_width // 2, screen_height // 6))
             self.screen.blit(title_text, title_rect)
             
             # Draw car display background
@@ -9127,6 +9658,21 @@ class Game:
             # Update display
             pygame.display.flip()
             clock.tick(60)
+            
+        # Add exit transition when leaving garage menu
+        if hasattr(self, "transition"):
+            self.transition.transition_type = "wipe_right"  # Opposite of entry transition
+            self.transition.transition_color = (40, 20, 0)  # Same color as entry
+            self.transition.start(direction="out", duration=0.4)
+            
+            # Wait for transition to complete
+            transition_start = time.time()
+            while self.transition.running and time.time() - transition_start < 0.5:
+                self.transition.update()
+                self.screen.blit(background_surface, (0, 0))
+                self.transition.draw()
+                pygame.display.flip()
+                clock.tick(60)
 
     def show_game_mode_menu(self):
         """Show the game mode selection menu with transition animation"""
@@ -9134,8 +9680,9 @@ class Game:
 
         # Create a slide transition effect
         if hasattr(self, "transition"):
-            self.transition.transition_type = "slide_left"
-            self.transition.start(direction="in", duration=0.4)
+            self.transition.transition_type = "iris"  # Changed from slide_left to iris for a more dramatic effect
+            self.transition.transition_color = (0, 20, 40)  # Dark blue color
+            self.transition.start(direction="in", duration=0.6)  # Slightly longer for better effect
 
         # Ensure menu music is playing
         if (
@@ -9189,10 +9736,9 @@ class Game:
         title_font = get_font(72, bold=True)
         menu_font = get_font(48)
 
-        # Draw title with up and down animation
-        title_y_offset = math.sin(pygame.time.get_ticks() * 0.003) * 8  # Smooth up/down movement
+        # Draw title
         title_text = title_font.render("SELECT GAME MODE", True, NEON_YELLOW)
-        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6 + title_y_offset))
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 6))
 
         # Game mode options
         options = [
@@ -9215,9 +9761,17 @@ class Game:
             # Get mouse position
             mouse_pos = pygame.mouse.get_pos()
             
-            # Update sparkles
+            # Update animations
             dt = clock.tick(60) / 1000.0  # Convert milliseconds to seconds
+            
+            # Update animation timers
+            self.title_bounce_time += dt
+            self.menu_items_slide_progress = min(1.0, self.menu_items_slide_progress + self.menu_items_slide_speed * dt)
+            self.background_pulse_time += dt
+            
+            # Update particle systems
             self.update_sparkles(dt)
+            self.update_menu_particles(dt)
 
             # Handle events
             for event in pygame.event.get():
