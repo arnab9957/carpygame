@@ -30,6 +30,10 @@ else:
     sound_enabled = True
     music_enabled = True
 
+# Global total coins system
+total_coins = 0  # Total coins collected across all games
+COINS_FILE = "total_coins.json"
+
 # Set up font system
 # Try to load Pixelify Sans font if available, otherwise fall back to default fonts
 try:
@@ -102,6 +106,104 @@ def scale_pos_x(x):
 def scale_pos_y(y):
     """Scale a y position based on screen height"""
     return int(y * SCALE_Y)
+
+
+# Helper function to stop all music
+def stop_all_music():
+    """Stop all music including pygame.mixer.music and all channels"""
+    try:
+        # Stop pygame.mixer.music if it's playing
+        if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+            print("Background music stopped")
+        
+        # Stop all channels to ensure menu music stops
+        for i in range(pygame.mixer.get_num_channels()):
+            channel = pygame.mixer.Channel(i)
+            if channel.get_busy():
+                channel.stop()
+        print("All music channels stopped")
+        
+        # Also stop all sound effects to be thorough
+        pygame.mixer.stop()
+        
+    except Exception as e:
+        print(f"Error stopping music: {e}")
+
+
+def save_total_coins():
+    """Save total coins to file"""
+    try:
+        with open(COINS_FILE, 'w') as f:
+            json.dump({"total_coins": total_coins}, f)
+        print(f"Total coins saved: {total_coins}")
+    except Exception as e:
+        print(f"Error saving total coins: {e}")
+
+
+def load_total_coins():
+    """Load total coins from file"""
+    global total_coins
+    try:
+        if os.path.exists(COINS_FILE):
+            with open(COINS_FILE, 'r') as f:
+                data = json.load(f)
+                total_coins = data.get("total_coins", 0)
+                print(f"Total coins loaded: {total_coins}")
+        else:
+            total_coins = 0
+            print("No coins file found, starting with 0 total coins")
+    except Exception as e:
+        print(f"Error loading total coins: {e}")
+        total_coins = 0
+
+
+def add_coins_to_total(coins_earned):
+    """Add coins from current game to total and save"""
+    global total_coins
+    total_coins += coins_earned
+    save_total_coins()
+    print(f"Added {coins_earned} coins to total. New total: {total_coins}")
+
+
+# Load total coins at startup
+load_total_coins()
+
+
+# Helper function to start menu music
+def start_menu_music():
+    """Start menu music if conditions are met"""
+    try:
+        if not (sound_enabled and music_enabled and pygame.mixer.get_init()):
+            return False
+            
+        # Try different possible menu music file paths
+        possible_paths = [
+            "sounds/menu_music.mp3",
+            "sounds/main_menu.wav", 
+            "sounds/background_music.mp3",
+            "sounds/music/track_01.mp3"
+        ]
+        
+        for menu_music_path in possible_paths:
+            if os.path.exists(menu_music_path):
+                try:
+                    menu_music = pygame.mixer.Sound(menu_music_path)
+                    menu_music.set_volume(0.4)
+                    # Use channel 1 for menu music (same as in the game)
+                    menu_channel = pygame.mixer.Channel(1)
+                    menu_channel.play(menu_music, loops=-1)
+                    print(f"Menu music restarted: {menu_music_path}")
+                    return True
+                except Exception as e:
+                    print(f"Failed to play {menu_music_path}: {e}")
+                    continue
+        
+        print("No suitable menu music file found")
+        return False
+    except Exception as e:
+        print(f"Error starting menu music: {e}")
+        return False
 
 
 def scale_rect(rect):
@@ -263,7 +365,7 @@ NEON_GREEN = (80, 200, 120)  # #50C878 - Boost effects
 BOOST_COLOR = (255, 140, 0)  # Orange for speed boost
 SHIELD_COLOR = (30, 144, 255)  # Dodger blue for shield
 MAGNET_COLOR = (255, 215, 0)  # Gold for coin magnet
-COIN_COLOR = (255, 223, 0)  # Gold for coins
+COIN_COLOR = (255, 0, 0)  # Red for coins
 SLOW_MO_COLOR = (138, 43, 226)  # Purple for slow motion
 
 # Game settings
@@ -1165,7 +1267,7 @@ class Coin:
         if spin_angle < 90 or spin_angle > 270:  # Only show when coin is "facing forward"
             font_size = int(coin_radius * 1.2)
             font = get_font(font_size, bold=True)
-            dollar_text = font.render("$", True, (255, 223, 0))
+            dollar_text = font.render("$", True, COIN_COLOR)
             text_rect = dollar_text.get_rect(center=(self.x, self.y))
             screen.blit(dollar_text, text_rect)
 
@@ -2976,6 +3078,13 @@ class SettingsMenu:
             # Toggle music
             global music_enabled
             music_enabled = bool(self.current_values[option])
+            
+            # Immediately stop music if disabled, or restart if enabled
+            if not music_enabled:
+                stop_all_music()
+            else:
+                # Try to restart menu music when enabled
+                start_menu_music()
             print(f"Music {'enabled' if music_enabled else 'disabled'}")
             return None
 
@@ -3351,6 +3460,13 @@ class PauseMenu:
             # Toggle music
             global music_enabled
             music_enabled = bool(self.current_values[option])
+            
+            # Immediately stop music if disabled, or restart if enabled
+            if not music_enabled:
+                stop_all_music()
+            else:
+                # Try to restart menu music when enabled
+                start_menu_music()
             print(f"Music {'enabled' if music_enabled else 'disabled'}")
             return None
 
@@ -4880,10 +4996,10 @@ class Game:
                 # Handle mouse clicks for pause button
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
-                        # Check if pause button was clicked
+                        # Check if pause button was clicked (updated position)
                         pause_button_rect = pygame.Rect(
                             SCREEN_WIDTH - scale_value(50),
-                            scale_value(10),
+                            scale_value(60),  # Updated from 10 to 60
                             scale_value(40),
                             scale_value(40),
                         )
@@ -6846,16 +6962,16 @@ class Game:
             self.screen.blit(time_shadow, (SCREEN_WIDTH // 2 - 102, 52))
             self.screen.blit(time_text, (SCREEN_WIDTH // 2 - 100, 50))
 
-            # Draw pause button
-            pause_button_rect = pygame.Rect(SCREEN_WIDTH - 50, 10, 40, 40)
+            # Draw pause button (moved to avoid coin counter)
+            pause_button_rect = pygame.Rect(SCREEN_WIDTH - 50, 60, 40, 40)  # Moved down from 10 to 60
             pygame.draw.rect(self.screen, DEEP_BLUE, pause_button_rect, border_radius=5)
             pygame.draw.rect(
                 self.screen, NEON_YELLOW, pause_button_rect, 2, border_radius=5
             )
 
-            # Draw pause symbol
-            pygame.draw.rect(self.screen, NEON_YELLOW, (SCREEN_WIDTH - 40, 18, 8, 24))
-            pygame.draw.rect(self.screen, NEON_YELLOW, (SCREEN_WIDTH - 28, 18, 8, 24))
+            # Draw pause symbol (adjusted position)
+            pygame.draw.rect(self.screen, NEON_YELLOW, (SCREEN_WIDTH - 40, 68, 8, 24))  # Moved down
+            pygame.draw.rect(self.screen, NEON_YELLOW, (SCREEN_WIDTH - 28, 68, 8, 24))  # Moved down
 
             # Draw game mode specific UI
             if self.game_mode == GAME_MODE_TIME_ATTACK:
@@ -7664,16 +7780,74 @@ class Game:
                 # Draw sparkles animation
                 self.update_sparkles(0.016)  # Use a fixed time step for consistent animation
                 self.draw_sparkles(self.screen)
-                
-                # Draw sparkles animation
-                self.update_sparkles(0.016)  # Use a fixed time step for consistent animation
-                self.draw_sparkles(self.screen)
             else:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
 
             # Draw title - without box/glow effect
             self.screen.blit(title_text, title_rect)
+
+            # Draw total coins counter in upper right corner
+            coin_font = get_font(min(32, SCREEN_HEIGHT // 28))  # Responsive coin font
+            coin_display_text = f"💰 {total_coins:,}"  # Format with commas for large numbers
+            coin_text_surface = coin_font.render(coin_display_text, True, COIN_COLOR)
+            
+            # Position in upper right corner with more padding to avoid cutting
+            coin_rect = coin_text_surface.get_rect()
+            coin_rect.topright = (SCREEN_WIDTH - 30, 40)  # Increased padding: 30px from right, 40px from top
+            
+            # Create a yellow circular background that looks like a coin
+            # Make radius responsive to text length for better appearance
+            text_width = coin_rect.width
+            text_height = coin_rect.height
+            circle_radius = max(text_width // 2 + 18, text_height // 2 + 18)  # Ensure minimum size
+            circle_center = (coin_rect.centerx, coin_rect.centery)
+            
+            # Ensure the circle doesn't get cut off at the top
+            min_y = circle_radius + 10  # Minimum distance from top edge
+            if circle_center[1] - circle_radius < 10:
+                # Adjust the center position if too close to top
+                circle_center = (circle_center[0], min_y + circle_radius)
+                # Also adjust the text position accordingly
+                coin_rect.centery = circle_center[1]
+            
+            # Draw the circular background directly on the screen (no separate surface)
+            # Draw multiple circles to create a gradient/3D coin effect
+            for i in range(circle_radius, 0, -2):
+                # Create gradient from bright yellow to darker yellow (complements red text)
+                brightness = 1.0 - (circle_radius - i) / circle_radius * 0.3
+                yellow_color = (
+                    int(255 * brightness),      # Red component
+                    int(215 * brightness),      # Green component  
+                    int(0 * brightness),        # Blue component
+                )
+                pygame.draw.circle(self.screen, yellow_color, circle_center, i)
+            
+            # Add a golden border to make it look more coin-like
+            pygame.draw.circle(self.screen, (218, 165, 32), circle_center, circle_radius, 4)  # Dark golden border
+            
+            # Add an inner highlight circle for 3D effect
+            highlight_radius = circle_radius - 6
+            highlight_center = (circle_center[0] - 2, circle_center[1] - 2)
+            pygame.draw.circle(self.screen, (255, 255, 200), highlight_center, highlight_radius, 2)  # Light highlight
+            
+            # Add a subtle pulsing glow effect to the coin text
+            pulse = (math.sin(pygame.time.get_ticks() * 0.003) + 1) * 0.5  # Slow pulse between 0 and 1
+            for offset in range(2, 0, -1):
+                glow_intensity = pulse * 0.8 + 0.2  # Keep some minimum glow
+                glow_color = (
+                    min(COIN_COLOR[0] + int(offset * 20 * glow_intensity), 255),
+                    min(COIN_COLOR[1] + int(offset * 20 * glow_intensity), 255),
+                    min(COIN_COLOR[2] + int(offset * 10 * glow_intensity), 255),
+                )
+                glow_text = coin_font.render(coin_display_text, True, glow_color)
+                glow_rect = coin_rect.copy()
+                glow_rect.x += offset
+                glow_rect.y += offset
+                self.screen.blit(glow_text, glow_rect)
+            
+            # Draw the main coin text
+            self.screen.blit(coin_text_surface, coin_rect)
 
             # Draw game over text if applicable
             if self.game_over and hasattr(self, 'game_has_been_played') and self.game_has_been_played:
@@ -9027,6 +9201,11 @@ class Game:
                             )
                             # Show high scores
                             self.show_highscores(player_name)
+
+                        # Add coins from this game to total coins
+                        if self.coins_collected > 0:
+                            add_coins_to_total(self.coins_collected)
+                            print(f"Game ended: Added {self.coins_collected} coins to total")
 
                         # Start transition out
                         self.transition.start(direction="out", duration=0.5)
