@@ -18,46 +18,22 @@ from pygame.locals import *
 
 # Initialize pygame
 pygame.init()
-
-# Initialize sound system with better error handling
-sound_enabled = False
-music_enabled = False
-
 try:
-    # Try different sound configurations
-    sound_configs = [
-        {'frequency': 44100, 'size': -16, 'channels': 2, 'buffer': 512},
-        {'frequency': 22050, 'size': -16, 'channels': 2, 'buffer': 1024},
-        {'frequency': 44100, 'size': -16, 'channels': 1, 'buffer': 1024},
-    ]
-    
-    for config in sound_configs:
-        try:
-            pygame.mixer.quit()  # Clean up any previous initialization
-            pygame.mixer.init(**config)
-            # Test if mixer is working
-            pygame.mixer.get_init()
-            sound_enabled = True
-            music_enabled = True
-            break
-        except pygame.error:
-            continue
-    
-    if not sound_enabled:
-        # Final fallback - try default initialization
-        pygame.mixer.init()
-        sound_enabled = True
-        music_enabled = True
-        
-except (pygame.error, Exception):
-    # Silently disable sound if all attempts fail
+    pygame.mixer.init(
+        frequency=44100, size=-16, channels=2, buffer=512
+    )  # More specific initialization
+    print("Sound mixer initialized successfully")
+    sound_enabled = True
+except pygame.error as e:
+    print(f"Warning: Sound mixer initialization failed: {e}. Sound will be disabled.")
     sound_enabled = False
-    music_enabled = False
+else:
+    sound_enabled = True
+    music_enabled = True
 
 # Global total coins system
 total_coins = 0  # Total coins collected across all games
 COINS_FILE = "data/total_coins.json"
-SELECTED_CAR_FILE = "data/selected_car.json"
 
 # Set up font system
 # Try to load Pixelify Sans font if available, otherwise fall back to default fonts
@@ -249,39 +225,8 @@ def add_coins_to_total(coins_earned):
     print(f"Added {coins_earned} coins to total. New total: {total_coins}")
 
 
-def save_selected_car(car_index):
-    """Save selected car to file"""
-    try:
-        os.makedirs("data", exist_ok=True)
-        with open(SELECTED_CAR_FILE, "w") as f:
-            json.dump({"selected_car": car_index}, f)
-        print(f"Selected car saved: {car_index}")
-    except Exception as e:
-        print(f"Error saving selected car: {e}")
-
-
-def load_selected_car():
-    """Load selected car from file"""
-    try:
-        if os.path.exists(SELECTED_CAR_FILE):
-            with open(SELECTED_CAR_FILE, "r") as f:
-                data = json.load(f)
-                selected_car = data.get("selected_car", 0)
-                print(f"Selected car loaded: {selected_car}")
-                return selected_car
-        else:
-            print("No selected car file found, using default car (0)")
-            return 0  # Default to first car
-    except Exception as e:
-        print(f"Error loading selected car: {e}")
-        return 0
-
-
 # Load total coins at startup
 load_total_coins()
-
-# Load selected car at startup
-selected_car_at_startup = load_selected_car()
 
 
 # Helper function to start menu music with improved error handling
@@ -291,15 +236,15 @@ def start_menu_music():
         if not (sound_enabled and music_enabled and pygame.mixer.get_init()):
             return False
 
-        # Try to import improved music functions (optional)
-        try:
-            from h import play_menu_music # type: ignore
-            # Use the improved function from h.py
-            success, channel = play_menu_music(volume=0.4, channel=1)
-            return success
-        except (ImportError, ModuleNotFoundError):
-            # Fallback to original implementation if h.py not available
-            pass
+        # Import the improved music functions from h.py
+        from h import play_menu_music
+
+        # Use the improved function from h.py
+        success, channel = play_menu_music(volume=0.4, channel=1)
+        return success
+
+    except ImportError:
+        # Fallback to original implementation if h.py import fails
         print("Using fallback menu music implementation")
         return start_menu_music_fallback()
     except Exception as e:
@@ -361,8 +306,8 @@ def scale_rect(rect):
 
 # Sound effects
 # Sound settings
-sound_enabled = True
-music_enabled = True
+sound_enabled = False
+music_enabled = False
 
 try:
     # Create a sounds directory if it doesn't exist
@@ -371,9 +316,9 @@ try:
         print("Created sounds directory")
 
     # Define sound file paths
-    SOUND_ENGINE = "assets/sounds/engin.mp3"
+    SOUND_ENGINE = "assets/sounds/engine.wav"
     SOUND_CRASH = "assets/sounds/crash.wav"
-    # SOUND_POWERUP = "assets/sounds/powerup.wav" # removed
+    SOUND_POWERUP = "assets/sounds/powerup.wav"
     SOUND_COIN = "assets/sounds/coin.wav"
     SOUND_MENU_SELECT = "assets/sounds/menu_select.wav"
     SOUND_MENU_NAVIGATE = "assets/sounds/menu_navigate.wav"
@@ -409,7 +354,7 @@ try:
     # Create placeholder sounds with different frequencies for distinction
     create_placeholder_sound(SOUND_ENGINE, duration=2.0, freq=200)
     create_placeholder_sound(SOUND_CRASH, duration=0.5, freq=100)
-    # create_placeholder_sound(SOUND_POWERUP, duration=0.3, freq=800) # removed
+    create_placeholder_sound(SOUND_POWERUP, duration=0.3, freq=800)
     create_placeholder_sound(SOUND_COIN, duration=0.2, freq=1000)
     create_placeholder_sound(SOUND_MENU_SELECT, duration=0.2, freq=600)
     create_placeholder_sound(SOUND_MENU_NAVIGATE, duration=0.1, freq=500)
@@ -434,22 +379,12 @@ try:
     # Check if pygame mixer is initialized
     if pygame.mixer.get_init():
         # Load sounds
-        # Load sound effects with error handling
-        try:
-            sound_engine = pygame.mixer.Sound(SOUND_ENGINE)
-            sound_crash = pygame.mixer.Sound(SOUND_CRASH)
-            sound_powerup = pygame.mixer.Sound(SOUND_POWERUP) # type: ignore
-            sound_coin = pygame.mixer.Sound(SOUND_COIN)
-            sound_menu_select = pygame.mixer.Sound(SOUND_MENU_SELECT)
-            sound_menu_navigate = pygame.mixer.Sound(SOUND_MENU_NAVIGATE)
-        except (pygame.error, FileNotFoundError):
-            # Create dummy sound objects if files not found
-            sound_engine = None
-            sound_crash = None
-            sound_powerup = None
-            sound_coin = None
-            sound_menu_select = None
-            sound_menu_navigate = None
+        sound_engine = pygame.mixer.Sound(SOUND_ENGINE)
+        sound_crash = pygame.mixer.Sound(SOUND_CRASH)
+        sound_powerup = pygame.mixer.Sound(SOUND_POWERUP)
+        sound_coin = pygame.mixer.Sound(SOUND_COIN)
+        sound_menu_select = pygame.mixer.Sound(SOUND_MENU_SELECT)
+        sound_menu_navigate = pygame.mixer.Sound(SOUND_MENU_NAVIGATE)
         sound_boost = pygame.mixer.Sound(SOUND_BOOST)
         sound_shield = pygame.mixer.Sound(SOUND_SHIELD)
         sound_game_over = pygame.mixer.Sound(SOUND_GAME_OVER)
@@ -469,14 +404,14 @@ try:
         sound_enabled = True
         music_enabled = True
     else:
-        # Silently disable sounds if mixer not available
-        pass
-        pass  # Don't set sound_enabled = False here
+        print("Sound mixer not initialized, sounds will be disabled")
+        sound_enabled = False
+        music_enabled = False
 
 except Exception as e:
     print(f"Error initializing sounds: {e}")
-    # Keep sound and music enabled in settings even if initialization fails
-    pass  # Don't set sound_enabled = False here
+    sound_enabled = False
+    music_enabled = False
 
 # Colors
 BLACK = (0, 0, 0)
@@ -543,33 +478,14 @@ SUNRISE_COLOR = (255, 127, 80)  # Coral for sunrise/sunset top
 SUNRISE_COLOR_BOTTOM = (255, 99, 71)  # Tomato for sunrise/sunset bottom
 STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
 
-# Magnet power-up settings
-MAGNET_WIDTH = 40
-MAGNET_HEIGHT = 40
-MAGNET_DURATION = 5  # seconds
-MAGNET_RANGE = 150  # pixels - range for coin attraction
-MAGNET_COLOR = (255, 215, 0)  # Gold color
-
-# Boost power-up settings
-BOOST_WIDTH = 40
-BOOST_HEIGHT = 40
-BOOST_DURATION = 5  # seconds
+# Power-up settings
+POWERUP_WIDTH = 40
+POWERUP_HEIGHT = 40
+POWERUP_DURATION = 8  # seconds - applies to boost, magnet, slow_mo (extended for better visibility)
 BOOST_MULTIPLIER = 1.8  # 1.8x speed multiplier
-BOOST_COLOR = (255, 140, 0)  # Orange color
-
-# Slow-Mo power-up settings
-SLOWMO_WIDTH = 40
-SLOWMO_HEIGHT = 40
-SLOWMO_DURATION = 5  # seconds
-SLOW_MO_FACTOR = 0.5  # 50% speed (half speed)
-SLOWMO_COLOR = (200, 100, 255)  # Purple color
-
-# Shield power-up settings
-SHIELD_WIDTH = 40
-SHIELD_HEIGHT = 40
-SHIELD_DURATION = 7  # seconds
-SHIELD_COLOR = (100, 200, 255)  # Blue color
-
+SHIELD_DURATION = 10  # seconds - shield lasts longer (extended for better visibility)
+MAGNET_RANGE = 150  # pixels
+SLOW_MO_FACTOR = 0.5  # 50% slower (0.5 = half speed)
 COIN_VALUE = 10  # points
 
 # Game modes
@@ -596,7 +512,7 @@ GAME_MODE_MISSIONS = 2
 MISSION_COLLECT_COINS = 0
 MISSION_DISTANCE = 1
 MISSION_AVOID_CRASHES = 2
-# MISSION_USE_POWERUPS removed
+MISSION_USE_POWERUPS = 3
 
 
 class HighScoreManager:
@@ -1225,13 +1141,13 @@ class ParticleSystem:
 
 
 class PowerUp:
-    def __init__(self, lane, powerup_type):
+    def __init__(self, lane, type):
         self.lane = lane
         self.x = LANE_POSITIONS[lane]
-        self.y = -POWERUP_HEIGHT // 2 # type: ignore
-        self.width = POWERUP_WIDTH # type: ignore
-        self.height = POWERUP_HEIGHT # type: ignore
-        self.type = powerup_type  # 'boost', 'shield', 'magnet', 'coin', 'slow_mo'
+        self.y = -POWERUP_HEIGHT // 2
+        self.width = POWERUP_WIDTH
+        self.height = POWERUP_HEIGHT
+        self.type = type  # 'boost', 'shield', 'magnet', 'coin', 'slow_mo'
 
         # Set color based on type
         if self.type == "boost":
@@ -1365,334 +1281,6 @@ class PowerUp:
             pygame.draw.line(
                 screen, SLOW_MO_COLOR, (self.x, draw_y), (hand_x, hand_y), 2
             )
-
-    def move(self, speed):
-        self.y += speed
-
-    def is_off_screen(self):
-        return self.y > SCREEN_HEIGHT + self.height // 2
-
-    def collides_with(self, car):
-        if self.collected:
-            return False
-        return (
-            abs(self.x - car.x) < (self.width + car.width) // 2
-            and abs(self.y - car.y) < (self.height + car.height) // 2
-        )
-
-    def collect(self):
-        self.collected = True
-
-
-class Magnet:
-    def __init__(self, lane):
-        self.lane = lane
-        self.x = LANE_POSITIONS[lane]
-        self.y = -MAGNET_HEIGHT // 2
-        self.width = MAGNET_WIDTH
-        self.height = MAGNET_HEIGHT
-        self.color = MAGNET_COLOR
-        self.collected = False
-        self.pulse_effect = 0
-
-    def draw(self, screen):
-        """Draw the magnet with animations"""
-        if self.collected:
-            return
-
-        # Pulsating effect
-        self.pulse_effect = (self.pulse_effect + 0.1) % (2 * math.pi)
-        pulse_size = math.sin(self.pulse_effect) * 5
-
-        # Floating animation
-        float_offset = math.sin(pygame.time.get_ticks() * 0.003) * 3
-        draw_y = self.y + float_offset
-
-        # Draw glow effect
-        for offset in range(3, 0, -1):
-            glow_color = (*self.color, 100 - offset * 30)
-            glow_surface = pygame.Surface(
-                (self.width + offset * 4 + pulse_size, self.height + offset * 4 + pulse_size),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.circle(
-                glow_surface,
-                glow_color,
-                (glow_surface.get_width() // 2, glow_surface.get_height() // 2),
-                (self.width + offset * 4 + pulse_size) // 2,
-            )
-            screen.blit(
-                glow_surface,
-                (
-                    self.x - glow_surface.get_width() // 2,
-                    draw_y - glow_surface.get_height() // 2,
-                ),
-            )
-
-        # Draw main magnet
-        pygame.draw.circle(screen, self.color, (self.x, draw_y), self.width // 2)
-
-        # Draw magnet symbol
-        font = get_font(20, bold=True)
-        symbol_text = font.render("🧲", True, WHITE)
-        symbol_rect = symbol_text.get_rect(center=(self.x, draw_y))
-        screen.blit(symbol_text, symbol_rect)
-
-        # Add magnetic field lines
-        rotation_angle = (pygame.time.get_ticks() * 0.05) % 360
-        for i in range(4):
-            angle = i * 90 + rotation_angle
-            rad_angle = math.radians(angle)
-            line_length = self.width // 2 + 10 + pulse_size // 2
-            end_x = self.x + math.cos(rad_angle) * line_length
-            end_y = draw_y + math.sin(rad_angle) * line_length
-            pygame.draw.line(screen, MAGNET_COLOR, (self.x, draw_y), (end_x, end_y), 1)
-
-    def move(self, speed):
-        self.y += speed
-
-    def is_off_screen(self):
-        return self.y > SCREEN_HEIGHT + self.height // 2
-
-    def collides_with(self, car):
-        if self.collected:
-            return False
-        return (
-            abs(self.x - car.x) < (self.width + car.width) // 2
-            and abs(self.y - car.y) < (self.height + car.height) // 2
-        )
-
-    def collect(self):
-        self.collected = True
-
-
-class Boost:
-    def __init__(self, lane):
-        self.lane = lane
-        self.x = LANE_POSITIONS[lane]
-        self.y = -BOOST_HEIGHT // 2
-        self.width = BOOST_WIDTH
-        self.height = BOOST_HEIGHT
-        self.color = BOOST_COLOR
-        self.collected = False
-        self.pulse_effect = 0
-
-    def draw(self, screen):
-        """Draw the boost with animations"""
-        if self.collected:
-            return
-
-        # Pulsating effect
-        self.pulse_effect = (self.pulse_effect + 0.15) % (2 * math.pi)
-        pulse_size = math.sin(self.pulse_effect) * 6
-
-        # Floating animation
-        float_offset = math.sin(pygame.time.get_ticks() * 0.004) * 4
-        draw_y = self.y + float_offset
-
-        # Draw glow effect
-        for offset in range(4, 0, -1):
-            glow_color = (*self.color, 120 - offset * 25)
-            glow_surface = pygame.Surface(
-                (self.width + offset * 5 + pulse_size, self.height + offset * 5 + pulse_size),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.circle(
-                glow_surface,
-                glow_color,
-                (glow_surface.get_width() // 2, glow_surface.get_height() // 2),
-                (self.width + offset * 5 + pulse_size) // 2,
-            )
-            screen.blit(
-                glow_surface,
-                (
-                    self.x - glow_surface.get_width() // 2,
-                    draw_y - glow_surface.get_height() // 2,
-                ),
-            )
-
-        # Draw main boost
-        pygame.draw.circle(screen, self.color, (self.x, draw_y), self.width // 2)
-
-        # Draw boost symbol
-        font = get_font(20, bold=True)
-        symbol_text = font.render("⚡", True, WHITE)
-        symbol_rect = symbol_text.get_rect(center=(self.x, draw_y))
-        screen.blit(symbol_text, symbol_rect)
-
-        # Add speed lines effect
-        rotation_angle = (pygame.time.get_ticks() * 0.1) % 360
-        for i in range(3):
-            angle = rotation_angle + i * 120
-            rad_angle = math.radians(angle)
-            line_length = self.width // 2 + 8 + pulse_size // 2
-            end_x = self.x + math.cos(rad_angle) * line_length
-            end_y = draw_y + math.sin(rad_angle) * line_length
-            pygame.draw.line(screen, BOOST_COLOR, (self.x, draw_y), (end_x, end_y), 2)
-
-    def move(self, speed):
-        self.y += speed
-
-    def is_off_screen(self):
-        return self.y > SCREEN_HEIGHT + self.height // 2
-
-    def collides_with(self, car):
-        if self.collected:
-            return False
-        return (
-            abs(self.x - car.x) < (self.width + car.width) // 2
-            and abs(self.y - car.y) < (self.height + car.height) // 2
-        )
-
-    def collect(self):
-        self.collected = True
-
-
-class SlowMo:
-    def __init__(self, lane):
-        self.lane = lane
-        self.x = LANE_POSITIONS[lane]
-        self.y = -SLOWMO_HEIGHT // 2
-        self.width = SLOWMO_WIDTH
-        self.height = SLOWMO_HEIGHT
-        self.color = SLOWMO_COLOR
-        self.collected = False
-        self.pulse_effect = 0
-
-    def draw(self, screen):
-        """Draw the slow-mo with animations"""
-        if self.collected:
-            return
-
-        # Slow pulsating effect
-        self.pulse_effect = (self.pulse_effect + 0.08) % (2 * math.pi)
-        pulse_size = math.sin(self.pulse_effect) * 4
-
-        # Slow floating animation
-        float_offset = math.sin(pygame.time.get_ticks() * 0.002) * 2
-        draw_y = self.y + float_offset
-
-        # Draw glow effect
-        for offset in range(5, 0, -1):
-            glow_color = (*self.color, 80 - offset * 15)
-            glow_surface = pygame.Surface(
-                (self.width + offset * 6 + pulse_size, self.height + offset * 6 + pulse_size),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.circle(
-                glow_surface,
-                glow_color,
-                (glow_surface.get_width() // 2, glow_surface.get_height() // 2),
-                (self.width + offset * 6 + pulse_size) // 2,
-            )
-            screen.blit(
-                glow_surface,
-                (
-                    self.x - glow_surface.get_width() // 2,
-                    draw_y - glow_surface.get_height() // 2,
-                ),
-            )
-
-        # Draw main slow-mo
-        pygame.draw.circle(screen, self.color, (self.x, draw_y), self.width // 2)
-
-        # Draw slow-mo symbol
-        font = get_font(20, bold=True)
-        symbol_text = font.render("⏱️", True, WHITE)
-        symbol_rect = symbol_text.get_rect(center=(self.x, draw_y))
-        screen.blit(symbol_text, symbol_rect)
-
-        # Add slow wave effect
-        rotation_angle = (pygame.time.get_ticks() * 0.03) % 360
-        for i in range(6):
-            angle = rotation_angle + i * 60
-            rad_angle = math.radians(angle)
-            line_length = self.width // 2 + 6 + pulse_size // 2
-            end_x = self.x + math.cos(rad_angle) * line_length
-            end_y = draw_y + math.sin(rad_angle) * line_length
-            pygame.draw.line(screen, SLOWMO_COLOR, (self.x, draw_y), (end_x, end_y), 1)
-
-    def move(self, speed):
-        self.y += speed
-
-    def is_off_screen(self):
-        return self.y > SCREEN_HEIGHT + self.height // 2
-
-    def collides_with(self, car):
-        if self.collected:
-            return False
-        return (
-            abs(self.x - car.x) < (self.width + car.width) // 2
-            and abs(self.y - car.y) < (self.height + car.height) // 2
-        )
-
-    def collect(self):
-        self.collected = True
-
-
-class Shield:
-    def __init__(self, lane):
-        self.lane = lane
-        self.x = LANE_POSITIONS[lane]
-        self.y = -SHIELD_HEIGHT // 2
-        self.width = SHIELD_WIDTH
-        self.height = SHIELD_HEIGHT
-        self.color = SHIELD_COLOR
-        self.collected = False
-        self.pulse_effect = 0
-
-    def draw(self, screen):
-        """Draw the shield with animations"""
-        if self.collected:
-            return
-
-        # Steady pulsating effect
-        self.pulse_effect = (self.pulse_effect + 0.12) % (2 * math.pi)
-        pulse_size = math.sin(self.pulse_effect) * 3
-
-        # Gentle floating animation
-        float_offset = math.sin(pygame.time.get_ticks() * 0.0025) * 2
-        draw_y = self.y + float_offset
-
-        # Draw glow effect
-        for offset in range(4, 0, -1):
-            glow_color = (*self.color, 100 - offset * 20)
-            glow_surface = pygame.Surface(
-                (self.width + offset * 4 + pulse_size, self.height + offset * 4 + pulse_size),
-                pygame.SRCALPHA,
-            )
-            pygame.draw.circle(
-                glow_surface,
-                glow_color,
-                (glow_surface.get_width() // 2, glow_surface.get_height() // 2),
-                (self.width + offset * 4 + pulse_size) // 2,
-            )
-            screen.blit(
-                glow_surface,
-                (
-                    self.x - glow_surface.get_width() // 2,
-                    draw_y - glow_surface.get_height() // 2,
-                ),
-            )
-
-        # Draw main shield
-        pygame.draw.circle(screen, self.color, (self.x, draw_y), self.width // 2)
-
-        # Draw shield symbol
-        font = get_font(20, bold=True)
-        symbol_text = font.render("🛡️", True, WHITE)
-        symbol_rect = symbol_text.get_rect(center=(self.x, draw_y))
-        screen.blit(symbol_text, symbol_rect)
-
-        # Add protective barrier effect
-        rotation_angle = (pygame.time.get_ticks() * 0.04) % 360
-        for i in range(8):
-            angle = rotation_angle + i * 45
-            rad_angle = math.radians(angle)
-            line_length = self.width // 2 + 5 + pulse_size // 2
-            end_x = self.x + math.cos(rad_angle) * line_length
-            end_y = draw_y + math.sin(rad_angle) * line_length
-            pygame.draw.circle(screen, SHIELD_COLOR, (int(end_x), int(end_y)), 2)
 
     def move(self, speed):
         self.y += speed
@@ -2263,9 +1851,7 @@ class Car:
         
         # Update power-up timers
         if self.has_shield:
-            # Ensure minimum delta time to prevent timer from getting stuck
-            effective_dt = max(dt, 1.0/60.0)  # Minimum 60 FPS equivalent
-            self.shield_timer -= effective_dt
+            self.shield_timer -= dt
             if self.shield_timer <= 0:
                 self.has_shield = False
                 self.shield_timer = 0
@@ -2273,9 +1859,7 @@ class Car:
                 self.add_deactivation_notification("SHIELD DEACTIVATED", (100, 200, 255))
 
         if self.has_boost:
-            # Ensure minimum delta time to prevent timer from getting stuck
-            effective_dt = max(dt, 1.0/60.0)  # Minimum 60 FPS equivalent
-            self.boost_timer -= effective_dt
+            self.boost_timer -= dt
             if self.boost_timer <= 0:
                 self.has_boost = False
                 self.is_boosting = False
@@ -2284,9 +1868,7 @@ class Car:
                 self.add_deactivation_notification("BOOST DEACTIVATED", (255, 140, 0))
 
         if self.has_magnet:
-            # Ensure minimum delta time to prevent timer from getting stuck
-            effective_dt = max(dt, 1.0/60.0)  # Minimum 60 FPS equivalent
-            self.magnet_timer -= effective_dt
+            self.magnet_timer -= dt
             if self.magnet_timer <= 0:
                 self.has_magnet = False
                 self.magnet_timer = 0
@@ -2294,9 +1876,7 @@ class Car:
                 self.add_deactivation_notification("MAGNET DEACTIVATED", (255, 215, 0))
 
         if self.has_slow_mo:
-            # Ensure minimum delta time to prevent timer from getting stuck
-            effective_dt = max(dt, 1.0/60.0)  # Minimum 60 FPS equivalent
-            self.slow_mo_timer -= effective_dt
+            self.slow_mo_timer -= dt
             if self.slow_mo_timer <= 0:
                 self.has_slow_mo = False
                 self.slow_mo_timer = 0
@@ -2323,38 +1903,51 @@ class Car:
         # Update deactivation notifications
         self.update_deactivation_notifications(dt)
 
-    # Powerup methods removed
-    # def get_powerup_status(self): ...
-    # def reset_powerups(self): ...
-    # def activate_shield(self): ...
-    # def activate_boost(self): ...
-    # def activate_magnet(self): ...
-    # def activate_slow_mo(self): ...
+    def get_powerup_status(self):
+        """Debug method to check current power-up states"""
+        return {
+            "shield": {"active": self.has_shield, "timer": self.shield_timer},
+            "boost": {
+                "active": self.has_boost,
+                "timer": self.boost_timer,
+                "energy": self.boost_energy,
+            },
+            "magnet": {"active": self.has_magnet, "timer": self.magnet_timer},
+            "slow_mo": {"active": self.has_slow_mo, "timer": self.slow_mo_timer},
+        }
 
-    def activate_magnet(self):
-        """Activate magnet powerup"""
-        self.has_magnet = True
-        self.magnet_timer = MAGNET_DURATION
-        print(f"🧲 Magnet activated! Duration: {MAGNET_DURATION}s")
-
-    def activate_boost(self):
-        """Activate boost powerup"""
-        self.has_boost = True
-        self.boost_timer = BOOST_DURATION
-        self.is_boosting = True
-        print(f"⚡ Boost activated! Duration: {BOOST_DURATION}s")
-
-    def activate_slow_mo(self):
-        """Activate slow-mo powerup"""
-        self.has_slow_mo = True
-        self.slow_mo_timer = SLOWMO_DURATION
-        print(f"⏱️ Slow-Mo activated! Duration: {SLOWMO_DURATION}s")
+    def reset_powerups(self):
+        """Reset all power-up states - useful when restarting game"""
+        self.has_shield = False
+        self.shield_timer = 0
+        self.has_boost = False
+        self.boost_timer = 0
+        self.is_boosting = False
+        self.has_magnet = False
+        self.magnet_timer = 0
+        self.has_slow_mo = False
+        self.slow_mo_timer = 0
+        self.boost_energy = 0
 
     def activate_shield(self):
-        """Activate shield powerup"""
         self.has_shield = True
         self.shield_timer = SHIELD_DURATION
-        print(f"🛡️ Shield activated! Duration: {SHIELD_DURATION}s")
+
+    def activate_boost(self):
+        self.has_boost = True
+        self.boost_timer = POWERUP_DURATION
+        self.is_boosting = True
+
+    def activate_magnet(self):
+        self.has_magnet = True
+        self.magnet_timer = POWERUP_DURATION
+
+    def activate_slow_mo(self):
+        self.has_slow_mo = True
+        self.slow_mo_timer = POWERUP_DURATION
+
+    def add_boost_energy(self, amount):
+        self.boost_energy = min(self.max_boost_energy, self.boost_energy + amount)
 
     def add_deactivation_notification(self, text, color):
         """Add a deactivation notification"""
@@ -2387,13 +1980,6 @@ class Car:
             return True
         return False
 
-    def add_boost_energy(self, amount):
-        """Add boost energy (from distance traveled or other sources)"""
-        if self.boost_energy < self.max_boost_energy:
-            self.boost_energy = min(self.max_boost_energy, self.boost_energy + amount)
-            return True
-        return False
-
     def draw_boost_meter(self, screen):
         # Draw boost energy meter
         meter_width = 150
@@ -2408,15 +1994,8 @@ class Car:
 
         # Fill based on energy
         energy_width = int(meter_width * (self.boost_energy / self.max_boost_energy))
-        
-        # Change color based on availability
-        if self.boost_energy >= 30:
-            boost_color = (0, 255, 0)  # Green when boost available
-        else:
-            boost_color = BOOST_COLOR  # Orange when charging
-            
         pygame.draw.rect(
-            screen, boost_color, (meter_x, meter_y, energy_width, meter_height), 0, 5
+            screen, BOOST_COLOR, (meter_x, meter_y, energy_width, meter_height), 0, 5
         )
 
         # Border
@@ -2424,12 +2003,9 @@ class Car:
             screen, WHITE, (meter_x, meter_y, meter_width, meter_height), 1, 5
         )
 
-        # Label with Space key hint
+        # Label
         font = get_font(16, bold=True)
-        if self.boost_energy >= 30:
-            text = font.render("BOOST [SPACE]", True, (0, 255, 0))
-        else:
-            text = font.render("BOOST", True, WHITE)
+        text = font.render("BOOST", True, WHITE)
         screen.blit(text, (meter_x + meter_width + 10, meter_y))
 
 
@@ -3064,15 +2640,10 @@ class SettingsMenu:
             "FULLSCREEN": (
                 1 if pygame.display.get_surface().get_flags() & pygame.FULLSCREEN else 0
             ),  # Check if already in fullscreen
-            "SOUND": 1,  # Default to ON
-            "MUSIC": 1,  # Default to ON
+            "SOUND": 1 if sound_enabled else 0,  # Based on global sound setting
+            "MUSIC": 1 if music_enabled else 0,  # Based on global music setting
             "DIFFICULTY": 1,  # NORMAL by default
         }
-
-        # Apply default settings immediately
-        global sound_enabled, music_enabled
-        sound_enabled = True
-        music_enabled = True
 
         self.selected_option = 0
         self.background = None
@@ -4736,7 +4307,26 @@ class PromptSystem:
                 "duration": 5.0,
                 "shown": False,
             },
-            # Powerup prompts removed
+            "powerup_boost": {
+                "text": "You got a BOOST power-up! Your speed is increased for a short time.",
+                "duration": 3.0,
+                "shown": False,
+            },
+            "powerup_shield": {
+                "text": "You got a SHIELD power-up! You're protected from crashes.",
+                "duration": 3.0,
+                "shown": False,
+            },
+            "powerup_magnet": {
+                "text": "You got a MAGNET power-up! Coins will be attracted to your car.",
+                "duration": 3.0,
+                "shown": False,
+            },
+            "powerup_slow_mo": {
+                "text": "You got a SLOW-MO power-up! Time is slowed down.",
+                "duration": 3.0,
+                "shown": False,
+            },
             "combo": {
                 "text": "Nice! Keep collecting items to increase your combo multiplier!",
                 "duration": 3.0,
@@ -4980,12 +4570,6 @@ class Game:
             self.init_sounds()
 
             self.reset_game()
-            
-            # Load selected car from file (use global variable if available)
-            if 'selected_car_at_startup' in globals():
-                self.selected_car = selected_car_at_startup
-            else:
-                self.selected_car = load_selected_car()
 
             # Register event handler for window resize
             pygame.event.set_allowed(
@@ -5331,7 +4915,7 @@ class Game:
         try:
             if sound_enabled and pygame.mixer.get_init():
                 # Define sound file paths
-                self.SOUND_ENGINE = "assets/sounds/engin.mp3"
+                self.SOUND_ENGINE = "assets/sounds/engine.wav"
                 self.SOUND_CRASH = "assets/sounds/crash.wav"
                 self.SOUND_POWERUP = "assets/sounds/powerup.wav"
                 self.SOUND_COIN = "assets/sounds/coin.wav"
@@ -5374,415 +4958,17 @@ class Game:
                 self.engine_channel = pygame.mixer.Channel(0)
                 self.engine_playing = False
 
+                # Menu music channel
+                self.menu_music_channel = pygame.mixer.Channel(1)
+                self.menu_music_playing = False
+
                 print("Sound effects loaded successfully")
-                
-            # Always initialize menu music system regardless of mixer status
-            # Menu music system - loop through all music files
-            try:
-                self.menu_music_channel = pygame.mixer.Channel(1) if pygame.mixer.get_init() else None
-            except:
-                self.menu_music_channel = None
-            self.menu_music_playing = False
-            self.current_menu_track_index = 0
-            self.menu_music_tracks = []
-            self.load_menu_music_tracks()
-            
-            if pygame.mixer.get_init():
                 return True
             else:
+                print("Sound mixer not initialized, sounds will be disabled")
                 return False
-                
         except Exception as e:
             print(f"Error initializing sounds: {e}")
-            return False
-
-    def load_menu_music_tracks(self):
-        """Load all music files from the music folder"""
-        try:
-            music_folder = "assets/music"
-            if not os.path.exists(music_folder):
-                os.makedirs(music_folder)
-                print(f"Created music directory: {music_folder}")
-            
-            # Supported audio formats
-            supported_formats = ['.mp3', '.wav', '.ogg', '.m4a']
-            
-            # Find all music files
-            for filename in os.listdir(music_folder):
-                if any(filename.lower().endswith(fmt) for fmt in supported_formats):
-                    full_path = os.path.join(music_folder, filename)
-                    self.menu_music_tracks.append(full_path)
-            
-            if self.menu_music_tracks:
-                print(f"Found {len(self.menu_music_tracks)} music tracks for menu:")
-                for i, track in enumerate(self.menu_music_tracks):
-                    print(f"  {i+1}. {os.path.basename(track)}")
-            else:
-                print("No music files found in assets/music folder")
-                # Create some test tracks for demonstration
-                test_tracks = [
-                    "assets/music/track1.mp3",
-                    "assets/music/track2.mp3"
-                ]
-                for track in test_tracks:
-                    if not os.path.exists(track):
-                        with open(track, 'w') as f:
-                            f.write("placeholder music file")
-                    self.menu_music_tracks.append(track)
-                print(f"Created {len(test_tracks)} placeholder music tracks")
-                
-        except Exception as e:
-            print(f"Error loading menu music tracks: {e}")
-            self.menu_music_tracks = []
-
-    def play_next_menu_track(self):
-        """Play the next track in the menu music playlist"""
-        try:
-            if not self.menu_music_tracks:
-                return False
-                
-            # Stop current track
-            if self.menu_music_channel.get_busy():
-                self.menu_music_channel.stop()
-            
-            # Get next track
-            track_path = self.menu_music_tracks[self.current_menu_track_index]
-            
-            # Try to load and play the track
-            try:
-                menu_music = pygame.mixer.Sound(track_path)
-                menu_music.set_volume(0.4)
-                self.menu_music_channel.play(menu_music)  # Play once, no loops
-                self.menu_music_playing = True
-                print(f"Playing menu track: {os.path.basename(track_path)}")
-                
-                # Move to next track for next time
-                self.current_menu_track_index = (self.current_menu_track_index + 1) % len(self.menu_music_tracks)
-                return True
-                
-            except Exception as e:
-                print(f"Error playing track {track_path}: {e}")
-                # Try next track
-                self.current_menu_track_index = (self.current_menu_track_index + 1) % len(self.menu_music_tracks)
-                return self.play_next_menu_track()
-                
-        except Exception:
-            # Silently handle menu music errors
-            return False
-
-    def update_menu_music(self):
-        """Check if current menu track has finished and play next one"""
-        try:
-            if (sound_enabled and music_enabled and 
-                hasattr(self, 'menu_music_channel') and 
-                self.menu_music_playing and 
-                not self.menu_music_channel.get_busy()):
-                # Current track finished, play next one
-                print("Track finished, playing next track")
-                self.play_next_menu_track()
-        except Exception as e:
-            print(f"Error updating menu music: {e}")
-
-    def draw_moon(self, surface, screen_width, screen_height):
-        """Draw a full glowing moon in the night sky with enhanced glow effects"""
-        # Moon position (more to the corner - upper left)
-        moon_x = int(screen_width * 0.15)  # Changed from 0.2 to 0.15 for more corner placement
-        moon_y = int(screen_height * 0.15)  # Changed from 0.2 to 0.15 for more corner placement
-        moon_radius = 50  # Even larger moon for better visibility
-        
-        # Get current time for animation
-        current_time = pygame.time.get_ticks() / 1000.0
-        
-        # Animated glow intensity (pulsing effect) - much brighter
-        glow_pulse = (math.sin(current_time * 0.8) + 1) * 0.5  # 0 to 1
-        base_glow_intensity = 0.8 + glow_pulse * 0.6  # 0.8 to 1.4 - much brighter
-        
-        # Enhanced glow effect with multiple layers - much more intense
-        glow_layers = [
-            (150, (255, 255, 255, int(20 * base_glow_intensity))),   # Outermost bright white glow
-            (120, (255, 255, 220, int(30 * base_glow_intensity))),   # Bright white glow
-            (90, (255, 245, 180, int(45 * base_glow_intensity))),    # Warm yellow glow
-            (70, (255, 235, 160, int(60 * base_glow_intensity))),    # Medium yellow glow
-            (50, (255, 225, 140, int(80 * base_glow_intensity))),    # Inner warm glow
-        ]
-        
-        # Draw glow layers
-        for glow_radius, glow_color in glow_layers:
-            glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surface, glow_color, (glow_radius, glow_radius), glow_radius)
-            surface.blit(glow_surface, (moon_x - glow_radius, moon_y - glow_radius))
-        
-        # Draw main moon body with much brighter colors (FULL MOON - no shadow)
-        moon_brightness = 1.0 + glow_pulse * 0.2  # Brighter variation
-        moon_color = (
-            min(255, int(255 * moon_brightness)),  # Full brightness
-            min(255, int(250 * moon_brightness)), 
-            min(255, int(220 * moon_brightness))
-        )
-        pygame.draw.circle(surface, moon_color, (moon_x, moon_y), moon_radius)
-        
-        # Add a much brighter rim light effect all around the moon for full moon
-        rim_light_color = (255, 255, 255)  # Pure white
-        for angle in range(0, 360, 45):  # Rim lights all around the moon
-            rim_angle_rad = math.radians(angle)
-            for i in range(3):
-                rim_x = moon_x + (moon_radius - 8 - i * 2) * math.cos(rim_angle_rad)
-                rim_y = moon_y + (moon_radius - 8 - i * 2) * math.sin(rim_angle_rad)
-                rim_radius = 3 - i
-                if rim_radius > 0:
-                    pygame.draw.circle(surface, rim_light_color, (int(rim_x), int(rim_y)), rim_radius)
-        
-        # Add MUCH MORE VISIBLE moon craters (bark spots) distributed across the full moon
-        crater_base_color = (180, 180, 140)  # Much darker base color for better contrast
-        crater_glow_color = (220, 220, 180)  # Darker glow color for better visibility
-        crater_shadow_color = (120, 120, 90)  # Dark shadow color for depth
-        
-        # Multiple craters across the full moon surface - MUCH MORE VISIBLE
-        craters = [
-            (moon_x + 18, moon_y - 15, 12, 8, 6),   # Large crater with shadow
-            (moon_x - 22, moon_y + 10, 10, 6, 4),   # Medium crater left side
-            (moon_x + 12, moon_y + 22, 9, 5, 3),    # Medium crater bottom
-            (moon_x - 10, moon_y - 18, 8, 4, 2),    # Small crater top left
-            (moon_x + 28, moon_y + 12, 7, 3, 2),    # Small crater right
-            (moon_x - 15, moon_y + 28, 6, 3, 2),    # Tiny crater bottom left
-            (moon_x + 8, moon_y - 28, 6, 3, 2),     # Tiny crater top
-            (moon_x - 25, moon_y - 8, 5, 2, 1),     # Extra small crater
-            (moon_x + 25, moon_y - 5, 5, 2, 1),     # Extra small crater right
-        ]
-        
-        # Draw craters with much better visibility
-        for crater_x, crater_y, glow_radius, base_radius, shadow_radius in craters:
-            # Draw shadow first for depth
-            pygame.draw.circle(surface, crater_shadow_color, (int(crater_x + 1), int(crater_y + 1)), shadow_radius + 1)
-            
-            # Draw glow background
-            pygame.draw.circle(surface, crater_glow_color, (int(crater_x), int(crater_y)), glow_radius)
-            
-            # Draw main crater
-            pygame.draw.circle(surface, crater_base_color, (int(crater_x), int(crater_y)), base_radius)
-            
-            # Add inner shadow for realistic crater depth
-            inner_shadow_color = (100, 100, 70)
-            if base_radius > 2:
-                pygame.draw.circle(surface, inner_shadow_color, (int(crater_x - 1), int(crater_y - 1)), max(1, base_radius - 2))
-        
-        # Add some additional surface texture spots for more realistic moon appearance
-        texture_spots = [
-            (moon_x - 5, moon_y + 5, 2),
-            (moon_x + 15, moon_y - 5, 1),
-            (moon_x - 12, moon_y - 12, 1),
-            (moon_x + 20, moon_y + 20, 2),
-            (moon_x - 20, moon_y + 15, 1),
-            (moon_x + 5, moon_y + 15, 1),
-        ]
-        
-        texture_color = (200, 200, 160)
-        for spot_x, spot_y, spot_radius in texture_spots:
-            pygame.draw.circle(surface, texture_color, (int(spot_x), int(spot_y)), spot_radius)
-        
-        # Add much brighter twinkling stars around the moon
-        for i in range(8):  # More stars
-            star_angle = current_time * 0.5 + i * 0.8  # Rotating positions
-            star_distance = 90 + i * 8
-            star_x = moon_x + math.cos(star_angle) * star_distance
-            star_y = moon_y + math.sin(star_angle) * star_distance
-            
-            # Much brighter twinkling effect
-            twinkle = (math.sin(current_time * 3 + i) + 1) * 0.5
-            star_alpha = int(200 + twinkle * 55)  # 200 to 255 - much brighter
-            star_size = 2 + int(twinkle * 3)  # 2 to 5 - larger stars
-            
-            # Draw star with glow
-            star_glow_color = (255, 255, 255, max(100, star_alpha - 50))
-            star_color = (255, 255, 255, star_alpha)
-            
-            # Draw glow first
-            glow_surface = pygame.Surface((star_size * 6, star_size * 6), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surface, star_glow_color, (star_size * 3, star_size * 3), star_size * 2)
-            surface.blit(glow_surface, (star_x - star_size * 3, star_y - star_size * 3))
-            
-            # Draw main star
-            star_surface = pygame.Surface((star_size * 2, star_size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(star_surface, star_color, (star_size, star_size), star_size)
-            surface.blit(star_surface, (star_x - star_size, star_y - star_size))
-        
-        # Add brighter drifting clouds
-        cloud_offset = (current_time * 15) % (screen_width + 300)  # Faster drift
-        cloud_x = cloud_offset - 150
-        cloud_y = moon_y + 25
-        
-        # Only draw cloud if it's near the moon area
-        if abs(cloud_x - moon_x) < 200:
-            cloud_alpha = int(60 + 30 * math.sin(current_time * 0.4))  # More visible clouds
-            cloud_color = (80, 80, 100, cloud_alpha)
-            
-            # Draw larger, more visible cloud shape
-            cloud_surface = pygame.Surface((120, 40), pygame.SRCALPHA)
-            pygame.draw.ellipse(cloud_surface, cloud_color, (0, 8, 100, 24))
-            pygame.draw.ellipse(cloud_surface, cloud_color, (25, 0, 70, 30))
-            pygame.draw.ellipse(cloud_surface, cloud_color, (50, 12, 60, 18))
-            
-            surface.blit(cloud_surface, (cloud_x, cloud_y))
-
-    def draw_animated_clouds(self, surface, screen_width, screen_height):
-        """Draw animated clouds drifting across the night sky"""
-        current_time = pygame.time.get_ticks() / 1000.0
-        
-        # Define multiple cloud layers with different speeds and heights
-        cloud_layers = [
-            {
-                'count': 4,
-                'speed': 15,  # pixels per second
-                'y_range': (screen_height * 0.1, screen_height * 0.3),
-                'size_range': (80, 120),
-                'alpha_range': (30, 60),
-                'color': (80, 90, 110)
-            },
-            {
-                'count': 3,
-                'speed': 25,
-                'y_range': (screen_height * 0.15, screen_height * 0.35),
-                'size_range': (100, 150),
-                'alpha_range': (20, 45),
-                'color': (70, 80, 100)
-            },
-            {
-                'count': 5,
-                'speed': 10,
-                'y_range': (screen_height * 0.05, screen_height * 0.25),
-                'size_range': (60, 100),
-                'alpha_range': (40, 70),
-                'color': (90, 100, 120)
-            }
-        ]
-        
-        for layer_idx, layer in enumerate(cloud_layers):
-            for cloud_idx in range(layer['count']):
-                # Calculate cloud position based on time and speed
-                base_offset = (current_time * layer['speed'] + cloud_idx * 200) % (screen_width + 300)
-                cloud_x = base_offset - 150
-                
-                # Use cloud index to determine consistent y position and size
-                import random
-                random.seed(layer_idx * 100 + cloud_idx)  # Consistent random values
-                cloud_y = random.uniform(layer['y_range'][0], layer['y_range'][1])
-                cloud_width = random.randint(layer['size_range'][0], layer['size_range'][1])
-                cloud_height = cloud_width // 3
-                
-                # Vary alpha based on position for depth effect
-                distance_factor = abs(cloud_x - screen_width/2) / (screen_width/2)
-                alpha_variation = (1 - distance_factor * 0.3)  # Fade at edges
-                base_alpha = random.randint(layer['alpha_range'][0], layer['alpha_range'][1])
-                cloud_alpha = int(base_alpha * alpha_variation)
-                
-                # Add slight vertical movement
-                cloud_y += math.sin(current_time * 0.3 + cloud_idx) * 10
-                
-                # Only draw cloud if it's visible on screen
-                if -cloud_width < cloud_x < screen_width + cloud_width:
-                    self.draw_single_cloud(surface, cloud_x, cloud_y, cloud_width, cloud_height, 
-                                         layer['color'], cloud_alpha)
-    
-    def draw_single_cloud(self, surface, x, y, width, height, color, alpha):
-        """Draw a single cloud with realistic shape"""
-        cloud_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        
-        # Create cloud shape with multiple overlapping circles
-        cloud_color = (*color, alpha)
-        
-        # Main cloud body (multiple ellipses for natural shape)
-        ellipse_count = 5
-        for i in range(ellipse_count):
-            ellipse_width = width // (ellipse_count - 1) * 2
-            ellipse_height = height
-            ellipse_x = (width // ellipse_count) * i
-            ellipse_y = 0
-            
-            # Vary ellipse height for natural cloud shape
-            if i == 0 or i == ellipse_count - 1:
-                ellipse_height = int(height * 0.7)  # Smaller at edges
-                ellipse_y = height // 6
-            
-            pygame.draw.ellipse(cloud_surface, cloud_color, 
-                              (ellipse_x, ellipse_y, ellipse_width, ellipse_height))
-        
-        # Add some wispy details
-        for i in range(3):
-            wisp_x = width // 4 + i * width // 4
-            wisp_y = height // 3
-            wisp_width = width // 6
-            wisp_height = height // 4
-            wisp_alpha = alpha // 2
-            
-            pygame.draw.ellipse(cloud_surface, (*color, wisp_alpha),
-                              (wisp_x, wisp_y, wisp_width, wisp_height))
-        
-        surface.blit(cloud_surface, (x, y))
-
-    def draw_animated_waves(self, surface, screen_width, screen_height):
-        """Draw animated sea waves at the very bottom of the screen"""
-        current_time = pygame.time.get_ticks() / 1000.0
-        
-        # Wave area dimensions - smaller area at the very bottom
-        wave_start_y = int(screen_height * 0.94)  # Start waves at 94% down the screen
-        wave_height = screen_height - wave_start_y
-        
-        # Draw multiple wave layers for depth
-        wave_layers = [
-            {'amplitude': 4, 'frequency': 0.01, 'speed': 30, 'color': (40, 80, 140), 'y_offset': 0},
-            {'amplitude': 6, 'frequency': 0.008, 'speed': 25, 'color': (50, 90, 150), 'y_offset': 5},
-            {'amplitude': 3, 'frequency': 0.012, 'speed': 35, 'color': (60, 100, 160), 'y_offset': 10},
-            {'amplitude': 5, 'frequency': 0.009, 'speed': 20, 'color': (30, 70, 130), 'y_offset': 15},
-        ]
-        
-        for layer in wave_layers:
-            wave_points = []
-            wave_y_base = wave_start_y + layer['y_offset']
-            
-            # Create wave points
-            for x in range(0, screen_width + 20, 10):
-                wave_y = wave_y_base + math.sin(
-                    x * layer['frequency'] + current_time * layer['speed'] * 0.1
-                ) * layer['amplitude']
-                wave_points.append((x, wave_y))
-            
-            # Add bottom points to close the polygon
-            wave_points.append((screen_width, screen_height))
-            wave_points.append((0, screen_height))
-            
-            # Draw wave layer
-            if len(wave_points) > 3:
-                pygame.draw.polygon(surface, layer['color'], wave_points)
-        
-        # Add wave foam/whitecaps
-        foam_y = wave_start_y + 2
-        for i in range(0, screen_width, 40):
-            foam_x = i + math.sin(current_time * 2 + i * 0.01) * 5
-            foam_intensity = (math.sin(current_time * 3 + i * 0.02) + 1) * 0.5
-            
-            if foam_intensity > 0.7:  # Only show foam when intensity is high
-                foam_alpha = int(foam_intensity * 120)
-                foam_surface = pygame.Surface((15, 4), pygame.SRCALPHA)
-                pygame.draw.ellipse(foam_surface, (255, 255, 255, foam_alpha), (0, 0, 15, 4))
-                surface.blit(foam_surface, (foam_x - 7, foam_y))
-
-    def start_menu_music_playlist(self):
-        """Start the menu music playlist"""
-        try:
-            print(f"Attempting to start menu music playlist. Sound enabled: {sound_enabled}, Music enabled: {music_enabled}")
-            print(f"Available tracks: {len(self.menu_music_tracks)}")
-            
-            if (sound_enabled and music_enabled and 
-                hasattr(self, 'menu_music_channel') and 
-                not self.menu_music_playing and
-                len(self.menu_music_tracks) > 0):
-                return self.play_next_menu_track()
-            else:
-                print("Menu music not started - conditions not met")
-                return False
-        except Exception as e:
-            print(f"Error starting menu music playlist: {e}")
-            return False
             traceback.print_exc()
             return False
 
@@ -6257,18 +5443,14 @@ class Game:
         # Connect car to game instance for screen flash effects
         self.player_car.game_instance = self
 
-        # Reset all power-ups removed
-        # self.player_car.reset_powerups()
+        # Reset all power-ups to ensure clean state
+        self.player_car.reset_powerups()
         
         # PowerUp tracker removed
 
         self.obstacles = []
         self.other_cars = []
-        # self.powerups = [] # removed
-        self.magnets = []  # Add magnets list
-        self.boosts = []   # Add boosts list
-        self.slowmos = []  # Add slow-mo list
-        self.shields = []  # Add shields list
+        self.powerups = []
         self.coins = []
         self.speed = INITIAL_SPEED
         self.score = 0
@@ -6276,11 +5458,7 @@ class Game:
         self.game_over = False
         self.last_obstacle_time = time.time()
         self.last_car_time = time.time()
-        # self.last_powerup_time = time.time() # removed
-        self.last_magnet_time = time.time()  # Add magnet timing
-        self.last_boost_time = time.time()   # Add boost timing
-        self.last_slowmo_time = time.time()  # Add slow-mo timing
-        self.last_shield_time = time.time()  # Add shield timing
+        self.last_powerup_time = time.time()
         self.last_coin_time = time.time()
         self.last_update_time = time.time()
         self.combo_count = 0
@@ -6302,7 +5480,7 @@ class Game:
         self.mission_progress = 0
         self.set_mission()
         self.start_time = time.time()
-        # self.powerups_used = 0 # removed
+        self.powerups_used = 0
         self.player_name = "Player"  # Default player name
         
         # PowerUp tracker removed
@@ -6346,7 +5524,9 @@ class Game:
         elif self.mission_type == MISSION_AVOID_CRASHES:
             self.mission_target = random.randint(30, 60)
             self.mission_description = f"Survive {self.mission_target} seconds"
-        # MISSION_USE_POWERUPS removed
+        elif self.mission_type == MISSION_USE_POWERUPS:
+            self.mission_target = random.randint(3, 8)
+            self.mission_description = f"Use {self.mission_target} power-ups"
 
     def update_mission_progress(self):
         """Update mission progress based on the current mission type"""
@@ -6359,7 +5539,8 @@ class Game:
             self.mission_progress = int(self.distance_traveled)
         elif self.mission_type == MISSION_AVOID_CRASHES:
             self.mission_progress = int(time.time() - self.start_time)
-        # MISSION_USE_POWERUPS removed
+        elif self.mission_type == MISSION_USE_POWERUPS:
+            self.mission_progress = self.powerups_used
 
         # Check if mission is complete
         if self.mission_progress >= self.mission_target:
@@ -6397,9 +5578,9 @@ class Game:
                             # Play boost sound
                             if sound_enabled and hasattr(self, "sound_boost"):
                                 self.sound_boost.play()
-                            # Show boost prompt removed
-                            # if hasattr(self, "prompt_system"):
-                            #     self.prompt_system.show_prompt("powerup_boost")
+                            # Show boost prompt if it's the first time
+                            if hasattr(self, "prompt_system"):
+                                self.prompt_system.show_prompt("powerup_boost")
                     elif event.key == pygame.K_t:
                         # Debug: Toggle time of day when T is pressed
                         self.cycle_time = (
@@ -7662,80 +6843,166 @@ class Game:
                     )  # Increased spacing after headings from 20 to 25
                     content_height += heading_rect.height + 25
 
-                    # Draw section items with IMPROVED text wrapping and visibility
+                    # Draw section items with enhanced styling
                     for item_index, item in enumerate(section["items"]):
-                        # Calculate available width for text (with more padding)
-                        text_area_width = content_area.width - 120  # More padding for better readability
-                        
-                        # Split text into feature name and description
+                        # Wrap text to fit within content area width
+                        words = item.split()
+                        lines = []
+                        current_line = []
+
+                        # Split at the dash to highlight the feature name
                         feature_name = ""
                         feature_description = ""
                         if "–" in item:
                             parts = item.split("–", 1)
                             feature_name = parts[0].strip()
-                            feature_description = parts[1].strip()
-                        else:
-                            feature_description = item
-                        
-                        # Render feature name (if exists) in highlight color
-                        if feature_name:
-                            feature_name_text = text_font.render(feature_name, True, text_highlight_color)
-                            feature_name_rect = feature_name_text.get_rect(x=content_area.x + 80, y=y_pos)
-                            
-                            # Check if visible and draw
-                            if (y_pos + feature_name_rect.height > content_area.top - 20 
-                                and y_pos < content_area.bottom + 20):
-                                self.screen.blit(feature_name_text, feature_name_rect)
-                            
-                            y_pos += feature_name_rect.height + 5
-                            content_height += feature_name_rect.height + 5
-                        
-                        # Wrap description text
-                        words = feature_description.split()
-                        lines = []
-                        current_line = []
-                        
+                            feature_description = "–" + parts[1].strip()
+
+                            # Add feature name as first line
+                            lines.append(feature_name)
+
+                            # Process description for wrapping
+                            words = feature_description.split()
+
                         for word in words:
                             test_line = " ".join(current_line + [word])
-                            test_surface = text_font.render(test_line, True, text_color)
-                            
-                            if test_surface.get_width() <= text_area_width:
+                            test_width = text_font.size(test_line)[0]
+
+                            if (
+                                test_width < screen_width - 500
+                            ):  # More reasonable width limit
                                 current_line.append(word)
                             else:
-                                if current_line:
-                                    lines.append(" ".join(current_line))
-                                    current_line = [word]
-                                else:
-                                    # Word is too long, force it on its own line
-                                    lines.append(word)
-                        
+                                lines.append(" ".join(current_line))
+                                current_line = [word]
+
                         if current_line:
                             lines.append(" ".join(current_line))
-                        
-                        # Render each line
-                        for line_index, line in enumerate(lines):
-                            if line.strip():  # Only render non-empty lines
-                                line_text = text_font.render(line, True, text_color)
-                                line_rect = line_text.get_rect(x=content_area.x + 80, y=y_pos)
-                                
-                                # Check if visible and draw
-                                if (y_pos + line_rect.height > content_area.top - 20 
-                                    and y_pos < content_area.bottom + 20):
-                                    self.screen.blit(line_text, line_rect)
-                                
-                                y_pos += line_rect.height + 8  # Increased line spacing
-                                content_height += line_rect.height + 8
-                        
-                        # Add extra space between items
-                        y_pos += 15
+
+                        # Create item background with subtle animation
+                        item_height = (
+                            sum([text_font.size(line)[1] for line in lines])
+                            + 8 * (len(lines) - 1)
+                            + 15
+                        )
+                        item_rect = pygame.Rect(
+                            200, y_pos - 5, screen_width - 480, item_height
+                        )  # Better proportioned width
+
+                        # Only draw if at least partially in view
+                        if (
+                            item_rect.bottom > content_area.top - 15
+                            and item_rect.top < content_area.bottom + 15
+                        ):
+                            # Alternate background colors for better readability
+                            if item_index % 2 == 0:
+                                # Create subtle animated background
+                                item_alpha = 10 + int(
+                                    5 * math.sin(animation_time + item_index * 0.2)
+                                )
+                                pygame.draw.rect(
+                                    self.screen,
+                                    (*heading_color, item_alpha),
+                                    item_rect,
+                                    border_radius=8,
+                                )
+
+                                # Add subtle border
+                                border_alpha = 20 + int(
+                                    10
+                                    * math.sin(animation_time * 1.5 + item_index * 0.3)
+                                )
+                                pygame.draw.rect(
+                                    self.screen,
+                                    (*heading_color, border_alpha),
+                                    item_rect,
+                                    1,
+                                    border_radius=8,
+                                )
+
+                        # Draw each line with improved styling - SIMPLIFIED VERSION
+                        first_line = True
+                        for line in lines:
+                            # Determine if this is the feature name (first line when split)
+                            is_feature_name = (
+                                first_line and feature_name and line == feature_name
+                            )
+
+                            # Choose color based on whether it's a feature name
+                            line_color = (
+                                text_highlight_color if is_feature_name else text_color
+                            )
+
+                            # Set position based on whether this is first line or continuation
+                            x_position = 200 if first_line else 220
+
+                            # HARD LIMIT: Truncate text to fixed maximum width
+                            # Calculate available width within content area
+                            available_width = content_area.right - x_position - 100
+
+                            # Render text to check its width
+                            test_surface = text_font.render(line, True, line_color)
+
+                            # If text is too wide, truncate it
+                            if test_surface.get_width() > available_width:
+                                # Always truncate if too wide
+                                char_ratio = available_width / test_surface.get_width()
+                                max_chars = max(5, int(len(line) * char_ratio) - 3)
+                                line = line[:max_chars] + "..."
+
+                            # Create final text surface
+                            text_surface = text_font.render(line, True, line_color)
+                            text_rect = text_surface.get_rect(x=x_position, y=y_pos)
+
+                            # Double-check that text is within content area horizontally
+                            if text_rect.right > content_area.right - 20:
+                                # If still too wide, skip this line
+                                continue
+
+                            # Only draw if at least partially in view vertically
+                            # More lenient check - draw if any part of the text is in the content area vertically
+                            if (
+                                y_pos + text_rect.height > content_area.top - 10
+                                and y_pos < content_area.bottom + 10
+                            ):
+                                # Draw text with subtle shadow for feature names
+                                if is_feature_name:
+                                    shadow_surface = text_font.render(
+                                        line, True, (0, 0, 0, 100)
+                                    )
+                                    shadow_rect = shadow_surface.get_rect(
+                                        x=x_position + 1, y=y_pos + 1
+                                    )
+                                    self.screen.blit(shadow_surface, shadow_rect)
+
+                                # Draw bullet point for first line
+                                if first_line:
+                                    bullet_color = heading_color
+                                    pygame.draw.circle(
+                                        self.screen,
+                                        bullet_color,
+                                        (
+                                            x_position - 10,
+                                            y_pos + text_surface.get_height() // 2,
+                                        ),
+                                        4,
+                                    )
+
+                                # Draw the text
+                                self.screen.blit(text_surface, text_rect)
+
+                            y_pos += text_rect.height + 10  # Increased line spacing
+                            content_height += text_rect.height + 10
+                            first_line = False
+
+                        y_pos += 20  # Increased spacing between items
                         content_height += 15
 
-                    # Add extra space between sections
-                    y_pos += 40
-                    content_height += 40
+                    y_pos += 30  # Increased space between sections from 20 to 30
+                    content_height += 30
 
-                # Calculate max scroll to ensure all content is accessible
-                max_scroll = min(0, content_area.height - content_height - 100)
+                # Calculate max scroll
+                max_scroll = min(0, screen_height - 180 - content_height)
 
                 # Restore original clipping region before drawing back button and scrollbar
                 self.screen.set_clip(original_clip)
@@ -8596,10 +7863,111 @@ class Game:
             text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 80))
             self.screen.blit(text_surface, text_rect)
 
-        # Draw active power-up indicators removed
-        # self.draw_powerup_status()
+        # Draw active power-up indicators
+        self.draw_powerup_status()
 
-    # draw_powerup_status function removed
+    def draw_powerup_status(self):
+        """Ultra-visible power-up status display"""
+        
+        # Get all active power-ups
+        active_powerups = []
+        if self.player_car.has_shield:
+            active_powerups.append(("SHIELD", self.player_car.shield_timer, (100, 200, 255)))
+        if self.player_car.has_boost:
+            active_powerups.append(("BOOST", self.player_car.boost_timer, (255, 140, 0)))
+        if self.player_car.has_magnet:
+            active_powerups.append(("MAGNET", self.player_car.magnet_timer, (255, 215, 0)))
+        if self.player_car.has_slow_mo:
+            active_powerups.append(("SLOW-MO", self.player_car.slow_mo_timer, (200, 100, 255)))
+        
+        if not active_powerups:
+            return  # No power-ups to display
+        
+        # Create a large, prominent display
+        display_width = 400
+        display_height = len(active_powerups) * 80 + 40
+        
+        # Position in top-right corner (more visible)
+        display_x = SCREEN_WIDTH - display_width - 20
+        display_y = 20
+        
+        # Draw semi-transparent background
+        bg_surface = pygame.Surface((display_width, display_height), pygame.SRCALPHA)
+        bg_surface.fill((0, 0, 0, 180))  # Dark semi-transparent
+        self.screen.blit(bg_surface, (display_x, display_y))
+        
+        # Draw border
+        pygame.draw.rect(self.screen, (255, 255, 255), 
+                        (display_x, display_y, display_width, display_height), 3)
+        
+        # Title
+        title_font = get_font(32, bold=True)
+        title_text = title_font.render("ACTIVE POWER-UPS", True, (255, 255, 255))
+        title_rect = title_text.get_rect(center=(display_x + display_width//2, display_y + 25))
+        self.screen.blit(title_text, title_rect)
+        
+        # Draw each power-up
+        y_offset = display_y + 60
+        powerup_font = get_font(28, bold=True)
+        
+        for name, timer, color in active_powerups:
+            # Determine color based on time remaining
+            if timer <= 1:
+                display_color = (255, 50, 50)  # Bright red - critical
+                warning = " ⚠️ EXPIRING!"
+            elif timer <= 2:
+                display_color = (255, 255, 50)  # Bright yellow - warning
+                warning = " ⚠️"
+            else:
+                display_color = color  # Normal color
+                warning = ""
+            
+            # Power-up text
+            powerup_text = f"{name}: {timer:.1f}s{warning}"
+            text_surface = powerup_font.render(powerup_text, True, display_color)
+            
+            # Add black outline for better visibility
+            outline_surface = powerup_font.render(powerup_text, True, (0, 0, 0))
+            for dx, dy in [(-2, -2), (-2, 2), (2, -2), (2, 2)]:
+                self.screen.blit(outline_surface, (display_x + 10 + dx, y_offset + dy))
+            
+            self.screen.blit(text_surface, (display_x + 10, y_offset))
+            
+            # Add progress bar
+            bar_width = display_width - 40
+            bar_height = 8
+            bar_x = display_x + 20
+            bar_y = y_offset + 35
+            
+            # Background bar
+            pygame.draw.rect(self.screen, (50, 50, 50), 
+                           (bar_x, bar_y, bar_width, bar_height))
+            
+            # Progress bar (based on original duration)
+            if name == "SHIELD":
+                max_duration = 10
+            else:
+                max_duration = 8
+            
+            progress = max(0, timer / max_duration)
+            progress_width = int(bar_width * progress)
+            
+            if progress_width > 0:
+                pygame.draw.rect(self.screen, display_color, 
+                               (bar_x, bar_y, progress_width, bar_height))
+            
+            y_offset += 80
+        
+        # Add flashing effect for expiring power-ups
+        current_time = pygame.time.get_ticks()
+        if any(timer <= 1 for _, timer, _ in active_powerups):
+            if (current_time // 250) % 2:  # Flash every 250ms
+                flash_surface = pygame.Surface((display_width, display_height), pygame.SRCALPHA)
+                flash_surface.fill((255, 0, 0, 50))  # Red flash
+                self.screen.blit(flash_surface, (display_x, display_y))
+        
+        # Draw deactivation notifications
+        self.draw_deactivation_notifications()
 
     def draw_deactivation_notifications(self):
         """Draw center-screen deactivation notifications"""
@@ -8675,35 +8043,15 @@ class Game:
             # Draw the road background
             self.draw_road()
 
-            # Draw magnets with culling
-            for magnet in self.magnets:
-                if magnet.y > -50 and magnet.y < SCREEN_HEIGHT + 50:
-                    magnet.draw(self.screen)
-
-            # Draw boosts with culling
-            for boost in self.boosts:
-                if boost.y > -50 and boost.y < SCREEN_HEIGHT + 50:
-                    boost.draw(self.screen)
-
-            # Draw slow-mo with culling
-            for slowmo in self.slowmos:
-                if slowmo.y > -50 and slowmo.y < SCREEN_HEIGHT + 50:
-                    slowmo.draw(self.screen)
-
-            # Draw shields with culling
-            for shield in self.shields:
-                if shield.y > -50 and shield.y < SCREEN_HEIGHT + 50:
-                    shield.draw(self.screen)
-
             # Draw coins with culling (only draw visible ones)
             for coin in self.coins:
                 if coin.y > -50 and coin.y < SCREEN_HEIGHT + 50:  # Simple culling
                     coin.draw(self.screen)
 
-            # Draw power-ups removed
-            # for powerup in self.powerups:
-            #     if powerup.y > -50 and powerup.y < SCREEN_HEIGHT + 50:
-            #         powerup.draw(self.screen)
+            # Draw power-ups with culling
+            for powerup in self.powerups:
+                if powerup.y > -50 and powerup.y < SCREEN_HEIGHT + 50:
+                    powerup.draw(self.screen)
 
             # Draw player car (only if not in crash animation or at the beginning of it)
             if not hasattr(self, "crash_animation_timer") or (
@@ -8864,76 +8212,8 @@ class Game:
                 True,
                 (COIN_COLOR[0] // 3, COIN_COLOR[1] // 3, COIN_COLOR[2] // 3),
             )
-            self.screen.blit(coin_shadow, (12, 72))  # Moved down from 52 to 72
-            self.screen.blit(coin_text, (10, 70))    # Moved down from 50 to 70
-
-            # Draw magnet status
-            if self.player_car.has_magnet:
-                magnet_text = score_font.render(
-                    f"MAGNET: {self.player_car.magnet_timer:.1f}s", True, MAGNET_COLOR
-                )
-                magnet_shadow = score_font.render(
-                    f"MAGNET: {self.player_car.magnet_timer:.1f}s",
-                    True,
-                    (MAGNET_COLOR[0] // 3, MAGNET_COLOR[1] // 3, MAGNET_COLOR[2] // 3),
-                )
-                self.screen.blit(magnet_shadow, (12, 102))  # Moved down from 82 to 102
-                self.screen.blit(magnet_text, (10, 100))    # Moved down from 80 to 100
-
-            # Draw boost status
-            if self.player_car.has_boost:
-                boost_text = score_font.render(
-                    f"BOOST: {self.player_car.boost_timer:.1f}s", True, BOOST_COLOR
-                )
-                boost_shadow = score_font.render(
-                    f"BOOST: {self.player_car.boost_timer:.1f}s",
-                    True,
-                    (BOOST_COLOR[0] // 3, BOOST_COLOR[1] // 3, BOOST_COLOR[2] // 3),
-                )
-                # Position below magnet if both are active
-                boost_y = 132 if self.player_car.has_magnet else 102  # Adjusted positions
-                self.screen.blit(boost_shadow, (12, boost_y + 2))
-                self.screen.blit(boost_text, (10, boost_y))
-
-            # Draw slow-mo status
-            if self.player_car.has_slow_mo:
-                slowmo_text = score_font.render(
-                    f"SLOW-MO: {self.player_car.slow_mo_timer:.1f}s", True, SLOWMO_COLOR
-                )
-                slowmo_shadow = score_font.render(
-                    f"SLOW-MO: {self.player_car.slow_mo_timer:.1f}s",
-                    True,
-                    (SLOWMO_COLOR[0] // 3, SLOWMO_COLOR[1] // 3, SLOWMO_COLOR[2] // 3),
-                )
-                # Position below other active powerups
-                slowmo_y = 102  # Start at coins + 32
-                if self.player_car.has_magnet:
-                    slowmo_y += 30
-                if self.player_car.has_boost:
-                    slowmo_y += 30
-                self.screen.blit(slowmo_shadow, (12, slowmo_y + 2))
-                self.screen.blit(slowmo_text, (10, slowmo_y))
-
-            # Draw shield status
-            if self.player_car.has_shield:
-                shield_text = score_font.render(
-                    f"SHIELD: {self.player_car.shield_timer:.1f}s", True, SHIELD_COLOR
-                )
-                shield_shadow = score_font.render(
-                    f"SHIELD: {self.player_car.shield_timer:.1f}s",
-                    True,
-                    (SHIELD_COLOR[0] // 3, SHIELD_COLOR[1] // 3, SHIELD_COLOR[2] // 3),
-                )
-                # Position below other active powerups
-                shield_y = 102  # Start at coins + 32
-                if self.player_car.has_magnet:
-                    shield_y += 30
-                if self.player_car.has_boost:
-                    shield_y += 30
-                if self.player_car.has_slow_mo:
-                    shield_y += 30
-                self.screen.blit(shield_shadow, (12, shield_y + 2))
-                self.screen.blit(shield_text, (10, shield_y))
+            self.screen.blit(coin_shadow, (12, 52))
+            self.screen.blit(coin_text, (10, 50))
 
             # Draw speed with neon green effect
             # Calculate the actual displayed speed, including boost effect
@@ -9269,7 +8549,7 @@ class Game:
             # Apply slow motion if active
             slow_mo_factor = SLOW_MO_FACTOR if self.player_car.has_slow_mo else 1.0
 
-            # Apply boost if active - boost makes objects move faster relative to player
+            # Apply boost if active (only for object movement, not speed increment)
             boost_factor = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
 
             # Combined speed factor for object movement
@@ -9288,13 +8568,9 @@ class Game:
 
             # Update distance traveled (boost affects distance covered)
             distance_multiplier = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
-            distance_this_frame = self.speed * dt * 10 * distance_multiplier
-            self.distance_traveled += distance_this_frame
-
-            # Add boost energy based on distance traveled (1 energy per 50 meters)
-            boost_energy_to_add = distance_this_frame / 50.0
-            if boost_energy_to_add > 0:
-                self.player_car.add_boost_energy(boost_energy_to_add)
+            self.distance_traveled += (
+                self.speed * dt * 10 * distance_multiplier
+            )  # 10 meters per unit of speed
 
             # Update time remaining for time attack mode
             if self.game_mode == GAME_MODE_TIME_ATTACK:
@@ -9399,40 +8675,12 @@ class Game:
                             self.other_cars.append(OtherCar(lane))
                         self.last_car_time = current_time
 
-            # Generate new power-ups removed
-            # if current_time - self.last_powerup_time > random.uniform(5.0, 15.0):
-            #     lane = random.randint(0, 7)  # Updated for 8 lanes
-            #     powerup_type = random.choice(["boost", "shield", "magnet", "slow_mo"])
-            #     self.powerups.append(PowerUp(lane, powerup_type))
-            #     self.last_powerup_time = current_time
-
-            # Generate new magnets
-            if current_time - self.last_magnet_time > random.uniform(10.0, 20.0):  # Every 10-20 seconds
-                lane = random.randint(0, 7)  # Random lane (0-7 for 8 lanes)
-                self.magnets.append(Magnet(lane))
-                self.last_magnet_time = current_time
-                print(f"🧲 Magnet spawned in lane {lane}!")
-
-            # Generate new boosts
-            if current_time - self.last_boost_time > random.uniform(8.0, 15.0):  # Every 8-15 seconds
-                lane = random.randint(0, 7)  # Random lane (0-7 for 8 lanes)
-                self.boosts.append(Boost(lane))
-                self.last_boost_time = current_time
-                print(f"⚡ Boost spawned in lane {lane}!")
-
-            # Generate new slow-mo
-            if current_time - self.last_slowmo_time > random.uniform(12.0, 25.0):  # Every 12-25 seconds
-                lane = random.randint(0, 7)  # Random lane (0-7 for 8 lanes)
-                self.slowmos.append(SlowMo(lane))
-                self.last_slowmo_time = current_time
-                print(f"⏱️ Slow-Mo spawned in lane {lane}!")
-
-            # Generate new shields
-            if current_time - self.last_shield_time > random.uniform(15.0, 30.0):  # Every 15-30 seconds
-                lane = random.randint(0, 7)  # Random lane (0-7 for 8 lanes)
-                self.shields.append(Shield(lane))
-                self.last_shield_time = current_time
-                print(f"🛡️ Shield spawned in lane {lane}!")
+            # Generate new power-ups
+            if current_time - self.last_powerup_time > random.uniform(5.0, 15.0):
+                lane = random.randint(0, 7)  # Updated for 8 lanes
+                powerup_type = random.choice(["boost", "shield", "magnet", "slow_mo"])
+                self.powerups.append(PowerUp(lane, powerup_type))
+                self.last_powerup_time = current_time
 
             # Generate new coins
             if current_time - self.last_coin_time > random.uniform(
@@ -9463,7 +8711,7 @@ class Game:
 
             # Move obstacles
             for obstacle in self.obstacles[:]:
-                obstacle.move(self.speed * speed_factor)
+                obstacle.move(self.speed * slow_mo_factor)
                 if obstacle.is_off_screen():
                     self.obstacles.remove(obstacle)
                     self.score += 1
@@ -9520,7 +8768,7 @@ class Game:
                 speed_modifier = (
                     0.5 if isinstance(car, AIControlledCar) and car.is_braking else 0.8
                 )
-                car.move(self.speed * speed_factor * speed_modifier)
+                car.move(self.speed * slow_mo_factor * speed_modifier)
 
                 if car.is_off_screen():
                     self.other_cars.remove(car)
@@ -9561,112 +8809,66 @@ class Game:
                         if sound_enabled and hasattr(self, "sound_game_over"):
                             self.sound_game_over.play()
 
-            # Move and check power-ups removed
-            # (powerup collision and collection logic removed)
+            # Move and check power-ups
+            for powerup in self.powerups[:]:
+                powerup.move(self.speed * slow_mo_factor)
+                if powerup.is_off_screen():
+                    self.powerups.remove(powerup)
+                elif powerup.collides_with(self.player_car):
+                    powerup.collect()
+                    self.powerups.remove(powerup)
 
-            # Move and check magnets
-            for magnet in self.magnets[:]:
-                magnet.move(self.speed * speed_factor)
-                if magnet.is_off_screen():
-                    self.magnets.remove(magnet)
-                elif magnet.collides_with(self.player_car):
-                    magnet.collect()
-                    self.magnets.remove(magnet)
-                    
-                    print("🧲 Magnet collected!")
-                    
-                    # Activate magnet effect
-                    self.player_car.activate_magnet()
-                    
-                    # Add points for collecting magnet
-                    self.score += 10 * self.score_multiplier
-                    
+                    # Apply power-up effect
+                    if powerup.type == "boost":
+                        self.player_car.activate_boost()
+                        # Create spark effect for boost activation
+                        self.particle_system.create_spark(
+                            self.player_car.x,
+                            self.player_car.y + self.player_car.height // 2,
+                            count=15,
+                        )
+                        # Play boost sound
+                        if sound_enabled and hasattr(self, "sound_boost"):
+                            self.sound_boost.play()
+                        # Show boost prompt
+                        if hasattr(self, "prompt_system"):
+                            self.prompt_system.show_prompt("powerup_boost")
+                    elif powerup.type == "shield":
+                        self.player_car.activate_shield()
+                        # Play shield sound
+                        if sound_enabled and hasattr(self, "sound_shield"):
+                            self.sound_shield.play()
+                        # Show shield prompt
+                        if hasattr(self, "prompt_system"):
+                            self.prompt_system.show_prompt("powerup_shield")
+                    elif powerup.type == "magnet":
+                        self.player_car.activate_magnet()
+                        # Play powerup sound
+                        if sound_enabled and hasattr(self, "sound_powerup"):
+                            self.sound_powerup.play()
+                        # Show magnet prompt
+                        if hasattr(self, "prompt_system"):
+                            self.prompt_system.show_prompt("powerup_magnet")
+                    elif powerup.type == "slow_mo":
+                        self.player_car.activate_slow_mo()
+                        # Play powerup sound
+                        if sound_enabled and hasattr(self, "sound_powerup"):
+                            self.sound_powerup.play()
+                        # Show slow-mo prompt
+                        if hasattr(self, "prompt_system"):
+                            self.prompt_system.show_prompt("powerup_slow_mo")
+
+                    # Add points for collecting power-up
+                    self.score += 5 * self.score_multiplier
                     # Add to combo
                     self.combo_count += 1
                     self.combo_timer = 2.0
-                    
-                    # Play coin sound (reuse existing sound)
-                    if sound_enabled and hasattr(self, "sound_coin"):
-                        self.sound_coin.play()
-
-            # Move and check boosts
-            for boost in self.boosts[:]:
-                boost.move(self.speed * speed_factor)
-                if boost.is_off_screen():
-                    self.boosts.remove(boost)
-                elif boost.collides_with(self.player_car):
-                    boost.collect()
-                    self.boosts.remove(boost)
-                    
-                    print("⚡ Boost collected!")
-                    
-                    # Activate boost effect
-                    self.player_car.activate_boost()
-                    
-                    # Add points for collecting boost
-                    self.score += 15 * self.score_multiplier
-                    
-                    # Add to combo
-                    self.combo_count += 1
-                    self.combo_timer = 2.0
-                    
-                    # Play coin sound (reuse existing sound)
-                    if sound_enabled and hasattr(self, "sound_coin"):
-                        self.sound_coin.play()
-
-            # Move and check slow-mo
-            for slowmo in self.slowmos[:]:
-                slowmo.move(self.speed * speed_factor)
-                if slowmo.is_off_screen():
-                    self.slowmos.remove(slowmo)
-                elif slowmo.collides_with(self.player_car):
-                    slowmo.collect()
-                    self.slowmos.remove(slowmo)
-                    
-                    print("⏱️ Slow-Mo collected!")
-                    
-                    # Activate slow-mo effect
-                    self.player_car.activate_slow_mo()
-                    
-                    # Add points for collecting slow-mo
-                    self.score += 20 * self.score_multiplier
-                    
-                    # Add to combo
-                    self.combo_count += 1
-                    self.combo_timer = 2.0
-                    
-                    # Play coin sound (reuse existing sound)
-                    if sound_enabled and hasattr(self, "sound_coin"):
-                        self.sound_coin.play()
-
-            # Move and check shields
-            for shield in self.shields[:]:
-                shield.move(self.speed * speed_factor)
-                if shield.is_off_screen():
-                    self.shields.remove(shield)
-                elif shield.collides_with(self.player_car):
-                    shield.collect()
-                    self.shields.remove(shield)
-                    
-                    print("🛡️ Shield collected!")
-                    
-                    # Activate shield effect
-                    self.player_car.activate_shield()
-                    
-                    # Add points for collecting shield
-                    self.score += 25 * self.score_multiplier
-                    
-                    # Add to combo
-                    self.combo_count += 1
-                    self.combo_timer = 2.0
-                    
-                    # Play coin sound (reuse existing sound)
-                    if sound_enabled and hasattr(self, "sound_coin"):
-                        self.sound_coin.play()
+                    # Track power-ups used for missions
+                    self.powerups_used += 1
 
             # Move and check coins
             for coin in self.coins[:]:
-                coin.move(self.speed * speed_factor)
+                coin.move(self.speed * slow_mo_factor)
 
                 # Check if coin is in magnet range
                 if self.player_car.has_magnet:
@@ -9675,9 +8877,9 @@ class Game:
                     distance = math.sqrt(dx * dx + dy * dy)
 
                     if distance < MAGNET_RANGE:
-                        # Move coin towards player with magnet attraction
+                        # Move coin towards player with stronger attraction
                         angle = math.atan2(dy, dx)
-                        magnet_speed = min(distance * 0.1, 8)  # Magnet pull speed
+                        magnet_speed = min(distance * 0.1, 8)  # Stronger magnet pull
                         coin.x += math.cos(angle) * magnet_speed
                         coin.y += math.sin(angle) * magnet_speed
 
@@ -9710,11 +8912,16 @@ class Game:
                     else:
                         self.score_multiplier = 1
 
-                    # Add boost energy from coin collection
-                    self.player_car.add_boost_energy(3)
+                    # Add boost energy
+                    self.player_car.add_boost_energy(5)
 
-                    # Show boost energy prompt removed
-                    # (boost energy logic removed)
+                    # Show boost energy prompt when energy is full
+                    if (
+                        hasattr(self, "prompt_system")
+                        and self.player_car.boost_energy
+                        >= self.player_car.max_boost_energy
+                    ):
+                        self.prompt_system.show_prompt("boost_energy")
 
             # Check if mission is complete and show prompt
             if (
@@ -9729,19 +8936,29 @@ class Game:
             traceback.print_exc()
 
     def show_menu(self):
+        print("Opening main menu...")
+
         # Create a fade-in transition effect
         if hasattr(self, "transition"):
             self.transition.transition_type = "fade"
             self.transition.start(direction="in", duration=0.5)
 
-        # Start playing menu music playlist if not already playing
+        # Start playing menu music if not already playing
         if (
             sound_enabled
             and music_enabled
             and hasattr(self, "menu_music_channel")
             and not self.menu_music_playing
         ):
-            self.start_menu_music_playlist()
+            try:
+                # Load menu music
+                menu_music = pygame.mixer.Sound(self.SOUND_MENU_MUSIC)
+                menu_music.set_volume(0.4)  # Set appropriate volume
+                self.menu_music_channel.play(menu_music, loops=-1)  # Loop indefinitely
+                self.menu_music_playing = True
+                print("Menu music started")
+            except Exception as e:
+                print(f"Error playing menu music: {e}")
 
         # Load background image
         try:
@@ -9774,19 +8991,9 @@ class Game:
             # Add stars only if using the gradient background
             for i in range(20):
                 x = random.randint(0, SCREEN_WIDTH)
-                y = random.randint(0, SCREEN_HEIGHT // 2)  # Stars in upper half
-                size = random.randint(1, 3)
-                pygame.draw.circle(background, WHITE, (x, y), size)
-            
-            # Add more scattered stars
-            for i in range(15):
-                x = random.randint(0, SCREEN_WIDTH)
                 y = random.randint(0, SCREEN_HEIGHT)
                 size = random.randint(1, 3)
                 pygame.draw.circle(background, SLEEK_SILVER, (x, y), size)
-
-            # Add half glowing moon
-            self.draw_moon(background, SCREEN_WIDTH, SCREEN_HEIGHT)
 
             # Draw some decorative lines
             for i in range(5):
@@ -9822,9 +9029,6 @@ class Game:
         last_selected = -1
 
         while running:
-            # Update menu music (check if track finished and play next)
-            self.update_menu_music()
-            
             # Get mouse position
             mouse_pos = pygame.mouse.get_pos()
 
@@ -10000,15 +9204,6 @@ class Game:
                 overlay.fill((0, 0, 0, 120))  # Semi-transparent black
                 self.screen.blit(overlay, (0, 0))
 
-                # Add the enhanced glowing moon AFTER the overlay so it's more visible
-                self.draw_moon(self.screen, current_width, current_height)
-
-                # Add animated clouds drifting across the sky
-                self.draw_animated_clouds(self.screen, current_width, current_height)
-
-                # Add animated sea waves at the bottom
-                self.draw_animated_waves(self.screen, current_width, current_height)
-
                 # Draw sparkles animation
                 self.update_sparkles(
                     0.016
@@ -10017,12 +9212,6 @@ class Game:
             else:
                 # Use the gradient background
                 self.screen.blit(background, (0, 0))
-
-                # Add animated clouds to gradient background too
-                self.draw_animated_clouds(self.screen, SCREEN_WIDTH, SCREEN_HEIGHT)
-
-                # Add animated sea waves to gradient background too
-                self.draw_animated_waves(self.screen, SCREEN_WIDTH, SCREEN_HEIGHT)
 
             # Calculate title animation (must be inside the loop for continuous animation)
             title_y_offset = (
@@ -10242,6 +9431,18 @@ class Game:
 
                 self.screen.blit(coin_text, coin_rect)
 
+                # Distance traveled text
+                distance_text = stats_font.render(
+                    f"🏁 DISTANCE: {int(self.distance_traveled)}m", True, NEON_GREEN
+                )
+                distance_rect = distance_text.get_rect(
+                    center=(
+                        SCREEN_WIDTH // 2,
+                        SCREEN_HEIGHT // 3 + 160,
+                    )  # Adjusted spacing
+                )
+                self.screen.blit(distance_text, distance_rect)
+
             # Draw menu buttons
             button_rects = []
             currently_selected = -1
@@ -10254,8 +9455,8 @@ class Game:
             ):
                 # If game over stats are shown, start menu buttons after the stats with minimum spacing
                 stats_end_y = (
-                    SCREEN_HEIGHT // 3 + 120
-                )  # After coin text (updated position)
+                    SCREEN_HEIGHT // 3 + 160
+                )  # After distance text (updated position)
                 min_spacing = 60  # Good spacing between stats and menu
                 menu_start_y = stats_end_y + min_spacing
             else:
@@ -11108,8 +10309,6 @@ class Game:
                         print(f"Selected car: {cars[current_car]['name']}")
                         # Store the selected car
                         self.selected_car = current_car
-                        # Save the selected car to file
-                        save_selected_car(current_car)
                         return
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -11128,8 +10327,6 @@ class Game:
                             print(f"Selected car: {cars[current_car]['name']}")
                             # Store the selected car
                             self.selected_car = current_car
-                            # Save the selected car to file
-                            save_selected_car(current_car)
                             return
                         # Check if left arrow was clicked
                         elif left_arrow_rect.collidepoint(event.pos):
@@ -12108,13 +11305,9 @@ def update(self):
 
         # Update distance traveled (boost affects distance covered)
         distance_multiplier = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
-        distance_this_frame = self.speed * dt * 10 * distance_multiplier
-        self.distance_traveled += distance_this_frame
-
-        # Add boost energy based on distance traveled (1 energy per 50 meters)
-        boost_energy_to_add = distance_this_frame / 50.0
-        if boost_energy_to_add > 0:
-            self.player_car.add_boost_energy(boost_energy_to_add)
+        self.distance_traveled += (
+            self.speed * dt * 10 * distance_multiplier
+        )  # 10 meters per unit of speed
 
         # Update time remaining for time attack mode
         if self.game_mode == GAME_MODE_TIME_ATTACK:
