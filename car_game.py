@@ -530,18 +530,13 @@ CAR_WIDTH = 60
 CAR_HEIGHT = 120
 OBSTACLE_WIDTH = 50
 OBSTACLE_HEIGHT = 50
+
+# Power-up dimensions
+POWERUP_WIDTH = 40
+POWERUP_HEIGHT = 40
+
 INITIAL_SPEED = 5
 SPEED_INCREMENT = 0.005  # Smoother acceleration
-
-# Day-Night cycle settings
-DAY_NIGHT_CYCLE_DURATION = 60  # seconds for a full cycle
-DAY_COLOR = (47, 79, 79)  # DARK_SLATE for day sky top
-DAY_COLOR_BOTTOM = (0, 128, 128)  # TEAL for day sky bottom
-NIGHT_COLOR = (5, 5, 25)  # Dark blue for night sky top
-NIGHT_COLOR_BOTTOM = (20, 20, 40)  # Slightly lighter blue for night sky bottom
-SUNRISE_COLOR = (255, 127, 80)  # Coral for sunrise/sunset top
-SUNRISE_COLOR_BOTTOM = (255, 99, 71)  # Tomato for sunrise/sunset bottom
-STAR_COUNT = 5  # Reduced for performance  # Reduced for performance
 
 # Magnet power-up settings
 MAGNET_WIDTH = 40
@@ -1828,6 +1823,11 @@ class Car:
         self.boost_energy = 0
         self.max_boost_energy = 100
 
+        # Gradual boost system
+        self.current_boost_factor = 1.0  # Current boost multiplier (1.0 = normal speed)
+        self.target_boost_factor = 1.0   # Target boost multiplier
+        self.boost_acceleration_rate = 1.2  # How fast boost ramps up/down per second (slower)
+
         # Animation variables
         self.swerve_offset = 0
         self.swerve_direction = 0
@@ -2280,6 +2280,7 @@ class Car:
                 self.has_boost = False
                 self.is_boosting = False
                 self.boost_timer = 0
+                self.target_boost_factor = 1.0  # Reset target to normal speed
                 print("⚡ Boost deactivated!")
                 self.add_deactivation_notification("BOOST DEACTIVATED", (255, 140, 0))
 
@@ -2302,6 +2303,25 @@ class Car:
                 self.slow_mo_timer = 0
                 print("⏱️ Slow-Mo deactivated!")
                 self.add_deactivation_notification("SLOW-MO DEACTIVATED", (200, 100, 255))
+
+        # Update gradual boost factor
+        if self.current_boost_factor != self.target_boost_factor:
+            # Gradually adjust current boost factor towards target
+            boost_diff = self.target_boost_factor - self.current_boost_factor
+            max_change = self.boost_acceleration_rate * dt
+            
+            if abs(boost_diff) <= max_change:
+                # Close enough, snap to target
+                self.current_boost_factor = self.target_boost_factor
+            else:
+                # Move towards target at acceleration rate
+                if boost_diff > 0:
+                    self.current_boost_factor += max_change
+                else:
+                    self.current_boost_factor -= max_change
+            
+            # Ensure boost factor stays within reasonable bounds
+            self.current_boost_factor = max(1.0, min(BOOST_MULTIPLIER, self.current_boost_factor))
 
         # Regenerate boost energy over time (10 energy per second)
         if self.boost_energy < self.max_boost_energy:
@@ -2338,10 +2358,11 @@ class Car:
         print(f"🧲 Magnet activated! Duration: {MAGNET_DURATION}s")
 
     def activate_boost(self):
-        """Activate boost powerup"""
+        """Activate boost powerup with gradual acceleration"""
         self.has_boost = True
         self.boost_timer = BOOST_DURATION
         self.is_boosting = True
+        self.target_boost_factor = BOOST_MULTIPLIER  # Set target instead of immediate
         print(f"⚡ Boost activated! Duration: {BOOST_DURATION}s")
 
     def activate_slow_mo(self):
@@ -4917,6 +4938,19 @@ class PromptSystem:
         for prompt_id in self.prompts:
             self.prompts[prompt_id]["shown"] = False
         self.active_prompts = []
+    
+    def show_custom_prompt(self, text, duration=3.0, fade_out=True):
+        """Show a custom prompt with specified text and duration"""
+        prompt = {
+            "text": text,
+            "start_time": time.time(),
+            "duration": duration,
+            "alpha": 255,
+            "fade_out": fade_out,
+            "fade_in": True,  # Add missing fade_in attribute
+            "y_offset": 0
+        }
+        self.active_prompts.append(prompt)
 
     def resize(self):
         """Update font sizes after window resize"""
@@ -4961,11 +4995,8 @@ class Game:
             self.transition = TransitionEffect(self.screen, "fade")
             self.transitioning = False
 
-            # Day-night cycle variables
-            self.cycle_time = 0
-            self.day_phase = 0  # 0 = day, 0.25 = sunset, 0.5 = night, 0.75 = sunrise
-            self.stars = []
-            self.generate_stars()
+            # Initialize timing for updates
+            self.last_update_time = time.time()
 
             # Sparkle animation for menu background
             self.sparkles = []
@@ -6265,6 +6296,7 @@ class Game:
         self.obstacles = []
         self.other_cars = []
         # self.powerups = [] # removed
+        self.powerups = []  # Re-added to fix AttributeError
         self.magnets = []  # Add magnets list
         self.boosts = []   # Add boosts list
         self.slowmos = []  # Add slow-mo list
@@ -6277,6 +6309,7 @@ class Game:
         self.last_obstacle_time = time.time()
         self.last_car_time = time.time()
         # self.last_powerup_time = time.time() # removed
+        self.last_powerup_time = time.time()  # Re-added to fix AttributeError
         self.last_magnet_time = time.time()  # Add magnet timing
         self.last_boost_time = time.time()   # Add boost timing
         self.last_slowmo_time = time.time()  # Add slow-mo timing
@@ -6320,12 +6353,14 @@ class Game:
             # Show welcome prompt after a short delay
             self.welcome_prompt_timer = 1.0  # Show welcome prompt after 1 second
 
-        # Reset day-night cycle but keep the current time
-        if hasattr(self, "day_phase"):
-            self.cycle_time = self.day_phase * DAY_NIGHT_CYCLE_DURATION
-        else:
-            self.cycle_time = 0
-            self.day_phase = 0
+        # Day/night cycle initialization
+        self.cycle_time = 0.0
+        self.day_phase = 0.0  # 0.0 = day, 0.25 = sunset, 0.5 = night, 0.75 = sunrise
+        self.last_phase_index = 0
+        
+        # Day/night cycle constants
+        self.DAY_NIGHT_CYCLE_DURATION = 120.0  # 24 seconds for full cycle
+        self.phase_names = ["Day", "Sunset", "Night", "Sunrise"]
 
         # Stop menu music if it's playing
         if (
@@ -6400,12 +6435,7 @@ class Game:
                             # Show boost prompt removed
                             # if hasattr(self, "prompt_system"):
                             #     self.prompt_system.show_prompt("powerup_boost")
-                    elif event.key == pygame.K_t:
-                        # Debug: Toggle time of day when T is pressed
-                        self.cycle_time = (
-                            self.cycle_time + DAY_NIGHT_CYCLE_DURATION / 4
-                        ) % DAY_NIGHT_CYCLE_DURATION
-                        self.day_phase = self.cycle_time / DAY_NIGHT_CYCLE_DURATION
+                    # T key handler removed (was for day/night cycle transitions)
                     elif event.key == pygame.K_p:
                         # Press P for power-up statistics
                         print("\n" + "="*60)
@@ -8055,37 +8085,44 @@ class Game:
                 return
 
     def get_sky_color(self, y_position):
-        """Get the sky color at the given y position based on time of day"""
+        """Get the sky color at the given y position based on day/night cycle"""
         # Calculate the ratio of y position (0 at top, 1 at bottom)
         ratio = y_position / SCREEN_HEIGHT
 
-        # Determine the phase of day/night cycle
-        if self.day_phase < 0.25:  # Day
-            day_progress = self.day_phase / 0.25
-            top_color = DAY_COLOR
-            bottom_color = DAY_COLOR_BOTTOM
-        elif self.day_phase < 0.5:  # Sunset
-            sunset_progress = (self.day_phase - 0.25) / 0.25
-            top_color = self.interpolate_color(
-                DAY_COLOR, SUNRISE_COLOR, sunset_progress
-            )
-            bottom_color = self.interpolate_color(
-                DAY_COLOR_BOTTOM, SUNRISE_COLOR_BOTTOM, sunset_progress
-            )
-        elif self.day_phase < 0.75:  # Night
-            night_progress = (self.day_phase - 0.5) / 0.25
-            top_color = self.interpolate_color(
-                SUNRISE_COLOR, NIGHT_COLOR, night_progress
-            )
-            bottom_color = self.interpolate_color(
-                SUNRISE_COLOR_BOTTOM, NIGHT_COLOR_BOTTOM, night_progress
-            )
-        else:  # Sunrise
-            sunrise_progress = (self.day_phase - 0.75) / 0.25
-            top_color = self.interpolate_color(NIGHT_COLOR, DAY_COLOR, sunrise_progress)
-            bottom_color = self.interpolate_color(
-                NIGHT_COLOR_BOTTOM, DAY_COLOR_BOTTOM, sunrise_progress
-            )
+        # Define colors for different phases
+        # Day colors (0.0 - 0.25)
+        day_top = (135, 206, 235)  # Sky blue
+        day_bottom = (176, 224, 230)  # Light sky blue
+        
+        # Sunset colors (0.25 - 0.5)
+        sunset_top = (255, 94, 77)  # Orange-red
+        sunset_bottom = (255, 154, 0)  # Orange
+        
+        # Night colors (0.5 - 0.75)
+        night_top = (25, 25, 112)  # Midnight blue
+        night_bottom = (72, 61, 139)  # Dark slate blue
+        
+        # Sunrise colors (0.75 - 1.0)
+        sunrise_top = (255, 165, 0)  # Orange
+        sunrise_bottom = (255, 192, 203)  # Light pink
+
+        # Determine which phase we're in and interpolate accordingly
+        if self.day_phase < 0.25:  # Day to Sunset
+            phase_ratio = self.day_phase / 0.25
+            top_color = self.interpolate_color(day_top, sunset_top, phase_ratio)
+            bottom_color = self.interpolate_color(day_bottom, sunset_bottom, phase_ratio)
+        elif self.day_phase < 0.5:  # Sunset to Night
+            phase_ratio = (self.day_phase - 0.25) / 0.25
+            top_color = self.interpolate_color(sunset_top, night_top, phase_ratio)
+            bottom_color = self.interpolate_color(sunset_bottom, night_bottom, phase_ratio)
+        elif self.day_phase < 0.75:  # Night to Sunrise
+            phase_ratio = (self.day_phase - 0.5) / 0.25
+            top_color = self.interpolate_color(night_top, sunrise_top, phase_ratio)
+            bottom_color = self.interpolate_color(night_bottom, sunrise_bottom, phase_ratio)
+        else:  # Sunrise to Day
+            phase_ratio = (self.day_phase - 0.75) / 0.25
+            top_color = self.interpolate_color(sunrise_top, day_top, phase_ratio)
+            bottom_color = self.interpolate_color(sunrise_bottom, day_bottom, phase_ratio)
 
         # Interpolate between top and bottom colors based on y position
         return self.interpolate_color(top_color, bottom_color, ratio)
@@ -8111,7 +8148,7 @@ class Game:
         if (
             not hasattr(self, "cached_background")
             or not hasattr(self, "cached_day_phase")
-            or abs(self.cached_day_phase - self.day_phase) > 0.05
+            or abs(self.cached_day_phase - self.day_phase) > 0.005
         ):
             # Only recreate the background when the day phase changes significantly
             background = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -8138,6 +8175,47 @@ class Game:
                     background, color, (0, y_start, SCREEN_WIDTH, y_end - y_start)
                 )
 
+            # Add celestial objects based on day/night phase
+            if self.day_phase >= 0.4 and self.day_phase <= 0.9:  # Night and transition phases
+                # Get current time for animations
+                current_time = pygame.time.get_ticks() / 1000.0
+                
+                # Draw stars during night time
+                if not hasattr(self, 'stars') or len(self.stars) == 0:
+                    self.generate_stars()
+                
+                # Calculate star visibility (fade in/out during transitions)
+                star_alpha = 1.0
+                if self.day_phase < 0.5:  # Sunset to night
+                    star_alpha = (self.day_phase - 0.4) / 0.1  # Fade in
+                elif self.day_phase > 0.8:  # Night to sunrise
+                    star_alpha = (0.9 - self.day_phase) / 0.1  # Fade out
+                
+                star_alpha = max(0.0, min(1.0, star_alpha))
+                
+                # Draw stars with calculated alpha
+                for star in self.stars:
+                    if star_alpha > 0:
+                        # Calculate twinkling effect
+                        twinkle = math.sin(current_time * star['twinkle_speed'] + star['twinkle_offset'])
+                        brightness = star['brightness'] * (0.7 + 0.3 * twinkle) * star_alpha
+                        
+                        # Draw star with brightness
+                        star_color = (int(255 * brightness), int(255 * brightness), int(200 * brightness))
+                        pygame.draw.circle(background, star_color, (int(star['x']), int(star['y'])), star['size'])
+                
+                # Draw moon during night phases - DISABLED FOR GAMEPLAY
+                # if self.day_phase >= 0.45 and self.day_phase <= 0.85:
+                #     moon_alpha = 1.0
+                #     if self.day_phase < 0.5:  # Fade in
+                #         moon_alpha = (self.day_phase - 0.45) / 0.05
+                #     elif self.day_phase > 0.8:  # Fade out
+                #         moon_alpha = (0.85 - self.day_phase) / 0.05
+                #     
+                #     moon_alpha = max(0.0, min(1.0, moon_alpha))
+                #     if moon_alpha > 0:
+                #         self.draw_moon_on_surface(background, SCREEN_WIDTH, SCREEN_HEIGHT, moon_alpha)
+
             # Cache the background and day phase
             self.cached_background = background
             self.cached_day_phase = self.day_phase
@@ -8147,112 +8225,37 @@ class Game:
 
         self.screen.blit(background, (0, 0))
 
+    def draw_moon_on_surface(self, surface, screen_width, screen_height, alpha=1.0):
+        """Draw moon on a given surface with specified alpha"""
+        # Moon position (upper right area)
+        moon_x = int(screen_width * 0.8)
+        moon_y = int(screen_height * 0.15)
+        moon_radius = int(scale_value(40))
+        
+        # Create moon color with alpha
+        moon_color = (int(255 * alpha), int(255 * alpha), int(200 * alpha))
+        glow_color = (int(255 * alpha * 0.3), int(255 * alpha * 0.3), int(100 * alpha * 0.3))
+        
+        # Draw moon glow (larger circle with lower alpha)
+        for i in range(3):
+            glow_radius = moon_radius + (i + 1) * 10
+            glow_alpha = alpha * (0.1 - i * 0.03)
+            if glow_alpha > 0:
+                glow_surf = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*glow_color[:3], int(glow_alpha * 255)), 
+                                 (glow_radius, glow_radius), glow_radius)
+                surface.blit(glow_surf, (moon_x - glow_radius, moon_y - glow_radius))
+        
+        # Draw main moon
+        pygame.draw.circle(surface, moon_color, (moon_x, moon_y), moon_radius)
+
     def draw_simple_street_light_effects(self):
         """Draw subtle street light effects for gradient background"""
         current_time = pygame.time.get_ticks() / 1000.0
 
-        # Only show subtle light effects at night
-        if 0.5 < self.day_phase < 0.9:
-            # Simple light positions on the sides of the screen
-            light_positions = [
-                (50, SCREEN_HEIGHT - 100),  # Left side
-                (SCREEN_WIDTH - 50, SCREEN_HEIGHT - 100),  # Right side
-            ]
+        # Night-time light effects removed (day/night cycle disabled)
 
-            # Add a few more lights along the sides
-            for i in range(2):
-                y_pos = SCREEN_HEIGHT - 200 - (i * 150)
-                if y_pos > 100:
-                    light_positions.extend([(30, y_pos), (SCREEN_WIDTH - 30, y_pos)])
-
-            # Draw subtle glow effects
-            for light_x, light_y in light_positions:
-                # Create gentle pulsing effect
-                pulse = (math.sin(current_time * 1.5 + light_x * 0.01) + 1) / 2
-                intensity = 0.3 + pulse * 0.2  # Subtle intensity
-
-                # Small glow effect
-                glow_size = 30
-                glow_surface = pygame.Surface(
-                    (glow_size * 2, glow_size * 2), pygame.SRCALPHA
-                )
-
-                # Warm light color
-                light_color = (255, 240, 180, int(40 * intensity))
-
-                # Draw simple circular glow
-                pygame.draw.circle(
-                    glow_surface, light_color, (glow_size, glow_size), glow_size
-                )
-
-                # Blit to screen
-                self.screen.blit(
-                    glow_surface, (light_x - glow_size, light_y - glow_size)
-                )
-
-        # Draw stars if it's night time (between 0.5 and 1.0) - optimized
-        if 0.4 < self.day_phase < 0.9:
-            # Calculate star visibility (0 at day, 1 at full night)
-            star_visibility = 0
-            if 0.4 < self.day_phase < 0.5:
-                star_visibility = (self.day_phase - 0.4) * 10  # Fade in
-            elif 0.5 <= self.day_phase < 0.75:
-                star_visibility = 1.0  # Full visibility
-            elif 0.75 <= self.day_phase < 0.9:
-                star_visibility = (0.9 - self.day_phase) * 6.67  # Fade out
-
-            # Only draw a subset of stars for better performance
-            current_time = pygame.time.get_ticks() / 1000
-            for i, star in enumerate(self.stars):
-                # Only draw every third star to improve performance
-                if i % 3 == 0:  # Changed from every other star to every third star
-                    # Calculate twinkle effect
-                    twinkle = (
-                        math.sin(
-                            current_time * star["twinkle_speed"]
-                            + star["twinkle_offset"]
-                        )
-                        + 1
-                    ) / 2
-                    brightness = (
-                        star["brightness"] * (0.7 + 0.3 * twinkle) * star_visibility
-                    )
-
-                    # Draw star with appropriate brightness
-                    color = (
-                        int(255 * brightness),
-                        int(255 * brightness),
-                        int(255 * brightness),
-                    )
-
-                    # Only draw glow for very bright stars to reduce rendering load
-                    if brightness > 0.85:  # Increased threshold from 0.7 to 0.85
-                        glow_radius = star["size"] * 2
-                        glow_surface = pygame.Surface(
-                            (glow_radius * 2, glow_radius * 2), pygame.SRCALPHA
-                        )
-                        glow_color = (255, 255, 255, int(50 * brightness))
-                        pygame.draw.circle(
-                            glow_surface,
-                            glow_color,
-                            (glow_radius, glow_radius),
-                            glow_radius,
-                        )
-                        self.screen.blit(
-                            glow_surface,
-                            (star["x"] - glow_radius, star["y"] - glow_radius),
-                        )
-
-                    # Draw the star itself
-                    pygame.draw.circle(
-                        self.screen, color, (star["x"], star["y"]), star["size"]
-                    )
-
-                    # Shooting stars are very rare and expensive to render - reduce frequency
-                    if (
-                        random.random() < 0.00005 and star_visibility > 0.9
-                    ):  # Reduced from 0.0001 to 0.00005
-                        self.create_shooting_star(star["x"], star["y"])
+        # Stars removed (day/night cycle disabled)
 
         # Draw lane markings with metallic effect - simplified
         for i in range(9):  # 8 lanes = 9 lines
@@ -8292,69 +8295,7 @@ class Game:
                     self.screen, WHITE, (x - 2, y, 4, 40), 0, 2  # Rounded corners
                 )
 
-        # Draw stars if it's night time (between 0.5 and 1.0) - optimized
-        if 0.4 < self.day_phase < 0.9:
-            # Calculate star visibility (0 at day, 1 at full night)
-            star_visibility = 0
-            if 0.4 < self.day_phase < 0.5:
-                star_visibility = (self.day_phase - 0.4) * 10  # Fade in
-            elif 0.5 <= self.day_phase < 0.75:
-                star_visibility = 1.0  # Full visibility
-            elif 0.75 <= self.day_phase < 0.9:
-                star_visibility = (0.9 - self.day_phase) * 6.67  # Fade out
-
-            # Only draw a subset of stars for better performance
-            current_time = pygame.time.get_ticks() / 1000
-            for i, star in enumerate(self.stars):
-                # Only draw every third star to improve performance
-                if i % 3 == 0:  # Changed from every other star to every third star
-                    # Calculate twinkle effect
-                    twinkle = (
-                        math.sin(
-                            current_time * star["twinkle_speed"]
-                            + star["twinkle_offset"]
-                        )
-                        + 1
-                    ) / 2
-                    brightness = (
-                        star["brightness"] * (0.7 + 0.3 * twinkle) * star_visibility
-                    )
-
-                    # Draw star with appropriate brightness
-                    color = (
-                        int(255 * brightness),
-                        int(255 * brightness),
-                        int(255 * brightness),
-                    )
-
-                    # Only draw glow for very bright stars to reduce rendering load
-                    if brightness > 0.85:  # Increased threshold from 0.7 to 0.85
-                        glow_radius = star["size"] * 2
-                        glow_surface = pygame.Surface(
-                            (glow_radius * 2, glow_radius * 2), pygame.SRCALPHA
-                        )
-                        glow_color = (255, 255, 255, int(50 * brightness))
-                        pygame.draw.circle(
-                            glow_surface,
-                            glow_color,
-                            (glow_radius, glow_radius),
-                            glow_radius,
-                        )
-                        self.screen.blit(
-                            glow_surface,
-                            (star["x"] - glow_radius, star["y"] - glow_radius),
-                        )
-
-                    # Draw the star itself
-                    pygame.draw.circle(
-                        self.screen, color, (star["x"], star["y"]), star["size"]
-                    )
-
-                    # Shooting stars are very rare and expensive to render - reduce frequency
-                    if (
-                        random.random() < 0.00005 and star_visibility > 0.9
-                    ):  # Reduced from 0.0001 to 0.00005
-                        self.create_shooting_star(star["x"], star["y"])
+        # Stars removed (day/night cycle disabled)
 
         # Draw lane markings with metallic effect - simplified
         for i in range(9):  # 8 lanes = 9 lines
@@ -8799,21 +8740,7 @@ class Game:
                     fade_overlay.set_alpha(fade_alpha)
                     self.screen.blit(fade_overlay, (0, 0))
 
-            # Apply night time overlay if it's night
-            if 0.5 <= self.day_phase < 0.75:
-                # Calculate darkness level (0 at sunset/sunrise, 1 at full night)
-                darkness = 0
-                if 0.5 <= self.day_phase < 0.625:
-                    darkness = (self.day_phase - 0.5) * 8  # Fade to dark
-                elif 0.625 <= self.day_phase < 0.75:
-                    darkness = (0.75 - self.day_phase) * 8  # Fade to light
-
-                # Create a semi-transparent dark overlay
-                night_overlay = pygame.Surface(
-                    (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA
-                )
-                night_overlay.fill((0, 0, 20, int(100 * darkness)))  # Blue-ish darkness
-                self.screen.blit(night_overlay, (0, 0))
+            # Night time overlay removed (day/night cycle disabled)
 
             # Create a semi-transparent UI overlay at the top
             ui_height = 80
@@ -8938,9 +8865,10 @@ class Game:
             # Draw speed with neon green effect
             # Calculate the actual displayed speed, including boost effect
             base_speed_value = int(self.speed * 10)
-            if self.player_car.has_boost:
+            # Apply boost multiplier to displayed speed
+            if self.player_car.current_boost_factor > 1.0:
                 speed_value = min(
-                    int(base_speed_value * BOOST_MULTIPLIER), 300
+                    int(base_speed_value * self.player_car.current_boost_factor), 300
                 )  # Cap at 300 km/h
             else:
                 speed_value = base_speed_value
@@ -8958,29 +8886,7 @@ class Game:
             )  # Shadow effect
             self.screen.blit(speed_text, (SCREEN_WIDTH // 2 - 100, 10))
 
-            # Draw time of day indicator
-            time_of_day_labels = ["DAY", "SUNSET", "NIGHT", "SUNRISE"]
-            time_index = int(self.day_phase * 4) % 4
-            time_label = time_of_day_labels[time_index]
-
-            # Choose color based on time of day
-            if time_index == 0:  # Day
-                time_color = NEON_GREEN
-            elif time_index == 1:  # Sunset
-                time_color = ORANGE
-            elif time_index == 2:  # Night
-                time_color = (100, 100, 255)  # Light blue
-            else:  # Sunrise
-                time_color = YELLOW
-
-            time_text = score_font.render(f"TIME: {time_label}", True, time_color)
-            time_shadow = score_font.render(
-                f"TIME: {time_label}",
-                True,
-                (time_color[0] // 3, time_color[1] // 3, time_color[2] // 3),
-            )
-            self.screen.blit(time_shadow, (SCREEN_WIDTH // 2 - 102, 52))
-            self.screen.blit(time_text, (SCREEN_WIDTH // 2 - 100, 50))
+            # Time of day indicator removed
 
             # Draw pause button (repositioned for better placement)
             pause_button_rect = pygame.Rect(
@@ -9203,11 +9109,6 @@ class Game:
                 self.player_car.update(dt)
                 return
 
-            # Calculate delta time
-            current_time = time.time()
-            dt = current_time - self.last_update_time
-            self.last_update_time = current_time
-
             # Handle welcome prompt timer
             if hasattr(self, "welcome_prompt_timer"):
                 self.welcome_prompt_timer -= dt
@@ -9243,11 +9144,8 @@ class Game:
             if hasattr(self, "prompt_system"):
                 self.prompt_system.update()
 
-            # Update day-night cycle
-            self.cycle_time += dt
-            self.day_phase = (
-                self.cycle_time % DAY_NIGHT_CYCLE_DURATION
-            ) / DAY_NIGHT_CYCLE_DURATION
+            # Update day/night cycle
+            self.update_day_night_cycle(dt)
 
             # Update player car
             self.player_car.update(dt)
@@ -9269,8 +9167,8 @@ class Game:
             # Apply slow motion if active
             slow_mo_factor = SLOW_MO_FACTOR if self.player_car.has_slow_mo else 1.0
 
-            # Apply boost if active - boost makes objects move faster relative to player
-            boost_factor = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
+            # Apply boost if active - use gradual boost factor instead of instant multiplier
+            boost_factor = self.player_car.current_boost_factor
 
             # Combined speed factor for object movement
             speed_factor = slow_mo_factor * boost_factor
@@ -9287,7 +9185,7 @@ class Game:
                 self.speed = 5
 
             # Update distance traveled (boost affects distance covered)
-            distance_multiplier = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
+            distance_multiplier = self.player_car.current_boost_factor
             distance_this_frame = self.speed * dt * 10 * distance_multiplier
             self.distance_traveled += distance_this_frame
 
@@ -9726,6 +9624,30 @@ class Game:
 
         except Exception as e:
             print(f"Error in update method: {e}")
+            traceback.print_exc()
+
+    def update_day_night_cycle(self, dt):
+        """Update the automatic day/night cycle"""
+        try:
+            # Update cycle time
+            self.cycle_time += dt
+            
+            # Calculate day phase (0.0 to 1.0)
+            self.day_phase = (self.cycle_time % self.DAY_NIGHT_CYCLE_DURATION) / self.DAY_NIGHT_CYCLE_DURATION
+            
+            # Determine current phase index (0=Day, 1=Sunset, 2=Night, 3=Sunrise)
+            current_phase_index = int(self.day_phase * 4)
+            
+            # Track phase changes (without showing notifications to avoid pausing)
+            if current_phase_index != self.last_phase_index:
+                phase_name = self.phase_names[current_phase_index]
+                self.last_phase_index = current_phase_index
+                # Optional: Print to console for debugging (doesn't pause game)
+                # print(f"Day/Night cycle: {phase_name} phase started")
+                
+        except Exception as e:
+            print(f"Error updating day/night cycle: {e}")
+            import traceback
             traceback.print_exc()
 
     def show_menu(self):
@@ -11872,37 +11794,44 @@ if __name__ == "__main__":
             )
 
     def get_sky_color(self, y_position):
-        """Get the sky color at the given y position based on time of day"""
+        """Get the sky color at the given y position based on day/night cycle"""
         # Calculate the ratio of y position (0 at top, 1 at bottom)
         ratio = y_position / SCREEN_HEIGHT
 
-        # Determine the phase of day/night cycle
-        if self.day_phase < 0.25:  # Day
-            day_progress = self.day_phase / 0.25
-            top_color = DAY_COLOR
-            bottom_color = DAY_COLOR_BOTTOM
-        elif self.day_phase < 0.5:  # Sunset
-            sunset_progress = (self.day_phase - 0.25) / 0.25
-            top_color = self.interpolate_color(
-                DAY_COLOR, SUNRISE_COLOR, sunset_progress
-            )
-            bottom_color = self.interpolate_color(
-                DAY_COLOR_BOTTOM, SUNRISE_COLOR_BOTTOM, sunset_progress
-            )
-        elif self.day_phase < 0.75:  # Night
-            night_progress = (self.day_phase - 0.5) / 0.25
-            top_color = self.interpolate_color(
-                SUNRISE_COLOR, NIGHT_COLOR, night_progress
-            )
-            bottom_color = self.interpolate_color(
-                SUNRISE_COLOR_BOTTOM, NIGHT_COLOR_BOTTOM, night_progress
-            )
-        else:  # Sunrise
-            sunrise_progress = (self.day_phase - 0.75) / 0.25
-            top_color = self.interpolate_color(NIGHT_COLOR, DAY_COLOR, sunrise_progress)
-            bottom_color = self.interpolate_color(
-                NIGHT_COLOR_BOTTOM, DAY_COLOR_BOTTOM, sunrise_progress
-            )
+        # Define colors for different phases
+        # Day colors (0.0 - 0.25)
+        day_top = (135, 206, 235)  # Sky blue
+        day_bottom = (176, 224, 230)  # Light sky blue
+        
+        # Sunset colors (0.25 - 0.5)
+        sunset_top = (255, 94, 77)  # Orange-red
+        sunset_bottom = (255, 154, 0)  # Orange
+        
+        # Night colors (0.5 - 0.75)
+        night_top = (25, 25, 112)  # Midnight blue
+        night_bottom = (72, 61, 139)  # Dark slate blue
+        
+        # Sunrise colors (0.75 - 1.0)
+        sunrise_top = (255, 165, 0)  # Orange
+        sunrise_bottom = (255, 192, 203)  # Light pink
+
+        # Determine which phase we're in and interpolate accordingly
+        if self.day_phase < 0.25:  # Day to Sunset
+            phase_ratio = self.day_phase / 0.25
+            top_color = self.interpolate_color(day_top, sunset_top, phase_ratio)
+            bottom_color = self.interpolate_color(day_bottom, sunset_bottom, phase_ratio)
+        elif self.day_phase < 0.5:  # Sunset to Night
+            phase_ratio = (self.day_phase - 0.25) / 0.25
+            top_color = self.interpolate_color(sunset_top, night_top, phase_ratio)
+            bottom_color = self.interpolate_color(sunset_bottom, night_bottom, phase_ratio)
+        elif self.day_phase < 0.75:  # Night to Sunrise
+            phase_ratio = (self.day_phase - 0.5) / 0.25
+            top_color = self.interpolate_color(night_top, sunrise_top, phase_ratio)
+            bottom_color = self.interpolate_color(night_bottom, sunrise_bottom, phase_ratio)
+        else:  # Sunrise to Day
+            phase_ratio = (self.day_phase - 0.75) / 0.25
+            top_color = self.interpolate_color(sunrise_top, day_top, phase_ratio)
+            bottom_color = self.interpolate_color(sunrise_bottom, day_bottom, phase_ratio)
 
         # Interpolate between top and bottom colors based on y position
         return self.interpolate_color(top_color, bottom_color, ratio)
@@ -12066,11 +11995,8 @@ def update(self):
         if hasattr(self, "prompt_system"):
             self.prompt_system.update()
 
-        # Update day-night cycle
-        self.cycle_time += dt
-        self.day_phase = (
-            self.cycle_time % DAY_NIGHT_CYCLE_DURATION
-        ) / DAY_NIGHT_CYCLE_DURATION
+        # Update day/night cycle
+        self.update_day_night_cycle(dt)
 
         # Update player car
         self.player_car.update(dt)
@@ -12107,7 +12033,7 @@ def update(self):
             self.speed = 15
 
         # Update distance traveled (boost affects distance covered)
-        distance_multiplier = BOOST_MULTIPLIER if self.player_car.has_boost else 1.0
+        distance_multiplier = self.player_car.current_boost_factor
         distance_this_frame = self.speed * dt * 10 * distance_multiplier
         self.distance_traveled += distance_this_frame
 

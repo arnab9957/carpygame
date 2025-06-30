@@ -26,6 +26,18 @@ wheels/
 # data/total_coins.json
 # data/selected_car.json
 
+*.bak
+*.backup
+
+# Test files and development artifacts
+test_*.py
+*.bak
+*.backup
+
+# Runtime directories (created automatically by game)
+fonts/
+sounds/
+
 # Temporary files
 *.tmp
 *.temp
